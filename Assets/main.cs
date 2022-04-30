@@ -1,8 +1,7 @@
-﻿using System.Collections;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using JetBrains.Annotations;
+using TMPro.SpriteAssetUtilities;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -11,25 +10,29 @@ public class main : MonoBehaviour
 
     public Button cardSelectSubmitButton, cardSelectRemoveButton, setButton, runButton;
 
-    public Button[] playerButtons, actionButtons, numberButtons, spades, hearts, diamonds, clubs;
+    public Button[] playerButtons, actionButtons, numberButtons, spades, hearts, diamonds, clubs; //0=spades, 1=hearts, 2=diamonds, 3=clubs
 
     private Button[][] cardButtons;
 
-    private TextMesh selectedCardsText;
+    public Text selectedCardsText, expectedCardsText, discardPileText, tableMeldsText;
 
-    private List<Play> playsOnTable, storedPlays;
+    public Text[] handTexts;
+
+    private List<Meld> meldsOnTable, storedMelds;
 
     private Hand[] hands;
 
     private Card storedCard;
 
-    private Card[][] cards;
+    public Card[][] cards;
 
     private List<Card> selectedCards, discardPile;
 
     private int activePlayer, playerCount, expectedCards;
 
-    private bool turnOver, playingOnExisting, playingNewPlay, drawingFromDiscard, firstCardEntry, discarding, min, selectingCards;
+    public bool disableAuto;
+
+    private bool drawFromDeck, turnOver, playingOnExisting, playingNewMeld, drawingFromDiscard, firstCardEntry, discarding, min, selectingCards;
 
     void Start()
     {
@@ -38,21 +41,33 @@ public class main : MonoBehaviour
 
     void init()
     {
-        playsOnTable = new List<Play>();
+        meldsOnTable = new List<Meld>();
         discardPile = new List<Card>();
         selectedCards = new List<Card>();
         firstCardEntry = false;
         discarding = false;
         drawingFromDiscard = false;
         playingOnExisting = false;
-        playingNewPlay = false;
+        playingNewMeld = false;
         selectingCards = false;
+        drawFromDeck = false;
         turnOver = false;
         min = false;
         selectedCardsText.text = "";
+        expectedCardsText.text = "";
+        tableMeldsText.text = "";
+        discardPileText.text = "";
+        expectedCardsText.gameObject.SetActive(false);
+        selectedCardsText.gameObject.SetActive(false);
+        discardPileText.gameObject.SetActive(false);
+        tableMeldsText.gameObject.SetActive(false);
+        setupCards();
         setupButtons();
-        hideCardButtons();
-
+        foreach (var v in handTexts)
+        {
+            v.gameObject.SetActive(false);
+            v.text = "";
+        }
         foreach (var v in playerButtons)
         {
             v.gameObject.SetActive(true);
@@ -61,7 +76,13 @@ public class main : MonoBehaviour
 
     void turn()
     {
-        if (activePlayer == 0)
+        foreach (var t in handTexts)
+        {
+            t.color = Color.black;
+        }
+
+        handTexts[activePlayer].color = Color.red;
+        if (activePlayer == 0 && !disableAuto)
         {
             //TODO: AI Turn 
         }
@@ -75,14 +96,45 @@ public class main : MonoBehaviour
         }
     }
 
+    void setupCards()
+    {
+        cards = new Card[4][];
+        for (var s = 0; s < 4; s++) //0=spades, 1=hearts, 2=diamonds, 3=clubs
+        {
+            cards[s] = new Card[13];
+            for (var r = 0; r < 13; r++)
+            {
+                cards[s][r] = new Card(s, r+1);
+            }
+        }
+    }
+
     void setupButtons() //TODO: Delegates
     {
-        cardButtons = new[] { spades, hearts, diamonds, clubs }; //Potentially change order
+        cardButtons = new[] { spades, hearts, diamonds, clubs }; //0=spades, 1=hearts, 2=diamonds, 3=clubs
         hideCardButtons();
+
+        for (var i = 0; i < 4; i++)
+        {
+            for (var j = 0; j < 13; j++)
+            {
+                var s = i;
+                var r = j;
+                cardButtons[s][r].onClick.RemoveAllListeners();
+                cardButtons[s][r].onClick.AddListener(delegate { cardButtonPress(s, r); });
+            }
+        }
 
         foreach (var v in actionButtons)
         {
             v.gameObject.SetActive(false);
+        }
+
+        for (var j = 0; j < 5; j++)
+        {
+            var a = j;
+            actionButtons[a].onClick.RemoveAllListeners();
+            actionButtons[a].onClick.AddListener(delegate { actionButtonPress(a); });
         }
 
         foreach (var v in playerButtons)
@@ -90,11 +142,52 @@ public class main : MonoBehaviour
             v.gameObject.SetActive(false);
         }
 
+        for (var j = 0; j < 4; j++)
+        {
+            var a = j;
+            playerButtons[a].onClick.RemoveAllListeners();
+            playerButtons[a].onClick.AddListener(delegate { pressPlayerCount(a); });
+        }
+        
+        foreach (var v in numberButtons)
+        {
+            v.gameObject.SetActive(false);
+        }
+
+        for (var j = 0; j < 4; j++)
+        {
+            var a = j;
+            numberButtons[a].onClick.RemoveAllListeners();
+            numberButtons[a].onClick.AddListener(delegate { pressPlayerSelect(a); });
+        }
+
         setButton.gameObject.SetActive(false);
         runButton.gameObject.SetActive(false);
+
+        setButton.onClick.RemoveAllListeners();
+        setButton.onClick.AddListener(setButtonPress);
+
+        runButton.onClick.RemoveAllListeners();
+        runButton.onClick.AddListener(runButtonPress);
+
+        cardSelectRemoveButton.onClick.RemoveAllListeners();
+        cardSelectRemoveButton.onClick.AddListener(cardSelectRemovePress);
+
+        cardSelectSubmitButton.onClick.RemoveAllListeners();
+        cardSelectSubmitButton.onClick.AddListener(cardSelectSubmitPress);
     }
 
-    void actionButtonPress(int a) //0=draw from pile, 1=draw from discard, 2=play new play, 3=play on existing play, 4=discard 
+    void pressPlayerSelect(int p)
+    {
+        activePlayer = p;
+        foreach (var v in numberButtons)
+        {
+            v.gameObject.SetActive(false);
+        }
+        turn();
+    }
+
+    void actionButtonPress(int a) //0=draw from pile, 1=draw from discard, 2=play new meld, 3=play on existing meld, 4=discard 
     {
         if (selectingCards) return;
         switch (a)
@@ -105,7 +198,16 @@ public class main : MonoBehaviour
                 actionButtons[2].gameObject.SetActive(true);
                 actionButtons[3].gameObject.SetActive(true);
                 actionButtons[4].gameObject.SetActive(true);
-                hands[activePlayer].blindDraw();  
+                if (activePlayer == 0 && disableAuto)
+                {
+                    drawFromDeck = true;
+                    promptCardEntry(1,false);
+                }
+                else
+                {
+                    hands[activePlayer].blindDraw();
+                } 
+                updateHandTexts();
                 break;
             case 1: //draw from discard
                 actionButtons[0].gameObject.SetActive(false);
@@ -116,11 +218,11 @@ public class main : MonoBehaviour
                 drawingFromDiscard = true;
                 promptCardEntry(1, false);
                 break;
-            case 2: //play new play
-                playingNewPlay = true;
+            case 2: //play new meld
+                playingNewMeld = true;
                 promptCardEntry(3, true);
                 break;
-            case 3: //play on existing play
+            case 3: //play on existing meld
                 playingOnExisting = true;
                 promptCardEntry(1, false);
                 break;
@@ -136,6 +238,32 @@ public class main : MonoBehaviour
         expectedCards = e;
         min = m;
         selectedCardsText.text = "";
+        expectedCardsText.text = "";
+        if (firstCardEntry)
+        {
+            expectedCardsText.text = "Enter starting hand (7)";
+        }
+        if (turnOver)
+        {
+            expectedCardsText.text = "Enter flipped-over card (1)";
+        }
+        if (discarding)
+        {
+            expectedCardsText.text = "Enter discarded card (1)";
+        }
+        if (playingNewMeld)
+        {
+            expectedCardsText.text = "Enter all cards in meld (3+)";
+        }
+        if (playingOnExisting)
+        {
+            expectedCardsText.text = "Enter card played (1)";
+        }
+        if (drawingFromDiscard)
+        {
+            expectedCardsText.text = "Enter card picked up from (1)";
+        }
+        
         selectedCards.Clear();
         showCardButtons();
         selectingCards = true;
@@ -144,6 +272,7 @@ public class main : MonoBehaviour
     void promptFirstCardEntry()
     {
         firstCardEntry = true;
+        Debug.Log("Awaiting first hand");
         promptCardEntry(7,false);
     }
 
@@ -151,8 +280,40 @@ public class main : MonoBehaviour
     {
         var c = cards[s][r];
         selectedCards.Add(c);
-        selectedCardsText.text += " " + c.asString();
+        selectedCardsText.text = stringOfSelectedCards();
         cardButtons[s][r].gameObject.SetActive(false);
+    }
+
+    void updateDiscardPile()
+    {
+        discardPileText.text = "";
+        foreach (var c in discardPile)
+        {
+            discardPileText.text += c.asString();
+            discardPileText.text += " ";
+        }
+    }
+
+    void updateMeldsText()
+    {
+        tableMeldsText.text = "";
+        foreach (var m in meldsOnTable)
+        {
+            tableMeldsText.text += m.asText();
+            tableMeldsText.text += "\n";
+        }
+    }
+
+    string stringOfSelectedCards()
+    {
+        var temp = "";
+        foreach (var v in selectedCards)
+        {
+            temp += v.asString();
+            temp += " ";
+        }
+
+        return temp;
     }
 
     void cardSelectSubmitPress()
@@ -179,8 +340,11 @@ public class main : MonoBehaviour
             c.markAsSeen();
             discardPile.Add(c);
             turnOver = false;
-            //TODO: Set who goes first
-            turn();
+            for (var i = 0; i < playerCount; i++)
+            {
+                numberButtons[i].gameObject.SetActive(true);
+            }
+            updateDiscardPile();
         }
         else if (discarding)
         {
@@ -194,6 +358,7 @@ public class main : MonoBehaviour
             {
                 activePlayer = 0;
             }
+            updateDiscardPile();
             turn();
         } else if (drawingFromDiscard)
         {
@@ -204,49 +369,73 @@ public class main : MonoBehaviour
                 hands[activePlayer].drawCard(discardPile[j]);
                 discardPile.RemoveAt(j);
             }
-
+            updateDiscardPile();
             drawingFromDiscard = false;
-        } else if (playingNewPlay)
+        } else if (playingNewMeld)
         {
-            if (!validPlay(selectedCards)) return;
-            var p = new Play(selectedCards);
-            hands[activePlayer].playPlay(p);
-            playsOnTable.Add(p);
-            playingNewPlay = false;
+            if (!validMeld(selectedCards)) return;
+            var t = new List<Card>();
+            foreach (var c in selectedCards)
+            {
+                t.Add(c);
+            }
+            var p = new Meld(t, cards);
+            hands[activePlayer].playMeld(p);
+            meldsOnTable.Add(p);
+            Debug.Log("There are " + meldsOnTable.Count + " melds on the table.");
+            for (var i = 0; i < meldsOnTable.Count; i++)
+            {
+                Debug.Log(i);
+                Debug.Log(".asText: " + meldsOnTable[i].asText());
+                Debug.Log("Meld type: " + meldsOnTable[i].getMeldType());
+                Debug.Log("First card in list: " + meldsOnTable[i].getCards()[0].asString());
+            }
+            playingNewMeld = false;
+            updateMeldsText();
         } else if (playingOnExisting)
         {
             var c = selectedCards[0];
-            var pp = playsOnTable.Where(p => p.canPlay(c)).ToList();
-            switch (pp.Count)
+            var m = meldsOnTable.Where(p => p.canPlay(c)).ToList();
+            switch (m.Count)
             {
                 case 1:
-                    hands[activePlayer].playCard(c, pp[0]);
+                    hands[activePlayer].playCard(c, m[0]);
                     break;
                 case 2:
-                    setOrRun(c, pp);
+                    setOrRun(c, m);
                     break;
             }
+            updateMeldsText();
+            playingOnExisting = false;
+        } else if (drawFromDeck)
+        {
+            var c = selectedCards[0];
+            hands[activePlayer].drawCard(c);
+            drawFromDeck = false;
         }
+        updateHandTexts();
     }
 
-    void setOrRun(Card c, List<Play> pp)
+    void setOrRun(Card c, List<Meld> pp)
     {
         storedCard = c;
-        storedPlays = pp;
+        storedMelds = pp;
         setButton.gameObject.SetActive(true);
         runButton.gameObject.SetActive(true);
     }
 
     void setButtonPress()
     {
-        if (storedPlays[0].getPlayType() == 0)
-        {
-            hands[activePlayer].playCard(storedCard, storedPlays[0]);
-        }
-        else
-        {
-            hands[activePlayer].playCard(storedCard, storedPlays[1]);
-        }
+        hands[activePlayer].playCard(storedCard, storedMelds[0].getMeldType() == 0 ? storedMelds[0] : storedMelds[1]);
+        setButton.gameObject.SetActive(false);
+        runButton.gameObject.SetActive(false);
+    }
+
+    void runButtonPress()
+    {
+        hands[activePlayer].playCard(storedCard, storedMelds[0].getMeldType() == 0 ? storedMelds[1] : storedMelds[0]);
+        setButton.gameObject.SetActive(false);
+        runButton.gameObject.SetActive(false);
     }
 
     void cardSelectRemovePress()
@@ -255,6 +444,7 @@ public class main : MonoBehaviour
         var c = selectedCards[selectedCards.Count - 1];
         selectedCards.Remove(c);
         cardButtons[c.getSuit()][c.getRank()-1].gameObject.SetActive(true);
+        selectedCardsText.text = stringOfSelectedCards();
     }
 
     void showCardButtons()
@@ -262,13 +452,63 @@ public class main : MonoBehaviour
         cardSelectRemoveButton.gameObject.SetActive(true);
         cardSelectSubmitButton.gameObject.SetActive(true);
         selectedCardsText.gameObject.SetActive(true);
+        expectedCardsText.gameObject.SetActive(true);
         foreach (var v in cardButtons)
         {
             foreach (var c in v)
             {
-                c.gameObject.SetActive(false);
+                c.gameObject.SetActive(true);
             }
         }
+
+        foreach (var v in cards)
+        {
+            foreach (var c in v)
+            {
+                if ((drawFromDeck || turnOver) && (hands.Any(h => h.getKnownCards().Contains(c)) || meldsOnTable.Any(m=>m.getCards().Contains(c)) || discardPile.Contains(c)))
+                {
+                    cardButtons[c.getSuit()][c.getRank()-1].gameObject.SetActive(false);
+                }
+
+                if (drawingFromDiscard && (disableAuto || activePlayer != 0))
+                {
+                    if (!discardPile.Contains(c))
+                    {
+                        cardButtons[c.getSuit()][c.getRank() - 1].gameObject.SetActive(false);
+                    }
+                }
+
+                if (playingNewMeld)
+                {
+                    if (discardPile.Contains(c))
+                    {
+                        cardButtons[c.getSuit()][c.getRank() - 1].gameObject.SetActive(false);
+                    }
+                    else
+                    {
+                        for (var i = 0; i < playerCount; i++)
+                        {
+                            if (i == activePlayer) continue;
+                            if (hands[i].getKnownCards().Contains(c))
+                            {
+                                cardButtons[c.getSuit()][c.getRank() - 1].gameObject.SetActive(false);
+                            }
+                        }
+                    }
+                }
+
+                if (playingOnExisting && !meldsOnTable.Any(m => m.canPlay(c)))
+                {
+                    cardButtons[c.getSuit()][c.getRank() - 1].gameObject.SetActive(false);
+                }
+            }
+        }
+        foreach (var v in handTexts)
+        {
+            v.gameObject.SetActive(false);
+        }
+        discardPileText.gameObject.SetActive(false);
+        tableMeldsText.gameObject.SetActive(false);
     }
 
     void hideCardButtons()
@@ -276,6 +516,7 @@ public class main : MonoBehaviour
         cardSelectRemoveButton.gameObject.SetActive(false);
         cardSelectSubmitButton.gameObject.SetActive(false);
         selectedCardsText.gameObject.SetActive(false);
+        expectedCardsText.gameObject.SetActive(false);
         foreach (var v in cardButtons)
         {
             foreach (var c in v)
@@ -283,13 +524,20 @@ public class main : MonoBehaviour
                 c.gameObject.SetActive(false);
             }
         }
+        for (var i = 0; i < playerCount; i++)
+        {
+            handTexts[i].gameObject.SetActive(true);
+        }
+        discardPileText.gameObject.SetActive(true);
+        tableMeldsText.gameObject.SetActive(true);
     }
 
     void pressPlayerCount(int n)
     {
-        hands = new Hand[n];
-        playerCount = n;
-        for (int i = 0; i < n; i++)
+        Debug.Log((n+1)+" players selected.");
+        hands = new Hand[n+1];
+        playerCount = n+1;
+        for (var i = 0; i < n+1; i++)
         {
             hands[i] = new Hand(i);
         }
@@ -300,9 +548,52 @@ public class main : MonoBehaviour
         promptFirstCardEntry();
     }
 
-    bool validPlay(List<Card> cards) //TODO: Check validitiy
-    {
+    bool validMeld(List<Card> c) //TODO: Check validity
+    { //0=spades, 1=hearts, 2=diamonds, 3=clubs
+        if (c[0].getSuit() == c[1].getSuit())
+        {//run
+            var s = c[0].getSuit();
+            var t = c.Select(k => k.getRank()).ToList();
+            var M = t.Max();
+            var m = t.Min();
+            if (c.Any(j => j.getSuit() != s))
+            {
+                return false;
+            }
+            for (var i = m; i < M + 1; i++)
+            {
+                var f = false; 
+                foreach (var j in c)
+                {
+                    if (j.getRank() == i)
+                    {
+                        f = true;
+                    }
+                }
+
+                if (f == false)
+                {
+                    return false;
+                }
+            }
+        }
+        else
+        {//set
+            var r = c[0].getRank();
+            if (c.Any(j => j.getRank() != r))
+            {
+                return false;
+            }
+        }
         return true;
+    }
+
+    void updateHandTexts()
+    {
+        for (var i = 0; i < playerCount; i++)
+        {
+            handTexts[i].text = hands[i].toText();
+        }
     }
 
 }
@@ -315,14 +606,56 @@ public class Card
 
     public Card(int suit, int rank)
     {
-        this.suit = suit;
+        this.suit = suit; //0=spades ♠, 1=hearts ♥, 2=diamonds ♦, 3=clubs ♣
         this.rank = rank;
         this.seen = false;
     }
 
     public string asString()
     {
-        return "";
+        var r = "";
+        var s = "";
+
+        if (rank == 1)
+        {
+            r = "A";
+        } else if (rank < 11)
+        {
+            r = rank.ToString();
+        }
+        else
+        {
+            switch (rank)
+            {
+                case 11:
+                    r = "J";
+                    break;
+                case 12:
+                    r = "Q";
+                    break;
+                case 13:
+                    r = "K";
+                    break;
+            }
+        }
+
+        switch (suit)
+        {
+            case 0:
+                s = "♠";
+                break;
+            case 1:
+                s = "♥";
+                break;
+            case 2:
+                s = "♦";
+                break;
+            case 3:
+                s = "♣";
+                break;
+        }
+
+        return r+s;
     }
 
     public bool hasBeenSeen()
@@ -344,7 +677,7 @@ public class Card
         return rank < 10 ? 5 : 10;
     }
 
-    public int getValueInContext(Hand[] a, Play[] t, Card[] d)
+    public int getValueInContext(Hand[] a, Meld[] t, Card[] d)
     {
 
         return getRawValue();
@@ -370,11 +703,37 @@ public class Hand
         this.size = 7;
         this.player = p;
         this.cards = new List<Card>();
+        this.tableCards = new List<Card>();
     }
 
     public void setHand(List<Card> h)
     {
-        cards = h;
+        foreach (var c in h)
+        {
+            cards.Add(c);
+        }
+    }
+
+    public string toText()
+    {
+        var temp = "";
+        foreach (var v in cards)
+        {
+            temp += v.asString();
+            temp += " ";
+        }
+
+        if (size > cards.Count)
+        {
+            temp += "(" + cards.Count + "/" + size + "), (-?/+" + getTablePoints() + ")";
+        }
+        else
+        {
+            temp += "(" + size + "), (-" + calculateValue() + "/+" + getTablePoints() + "=" + (getTablePoints()-calculateValue()) + ")";
+        }
+
+        
+        return temp;
     }
 
     public void blindDraw()
@@ -399,7 +758,7 @@ public class Hand
         }
     }
 
-    public bool playCard(Card c, Play p)
+    public bool playCard(Card c, Meld p)
     {
         if (!discard(c)) return false;
         tableCards.Add(c);
@@ -407,7 +766,7 @@ public class Hand
         return true;
     }
 
-    public void playPlay(Play p)
+    public void playMeld(Meld p)
     {
         foreach (var c in p.getCards())
         {
@@ -418,7 +777,7 @@ public class Hand
 
     public int getTablePoints()
     {
-        return tableCards.Sum(c => c.getRawValue());
+        return 0+tableCards.Sum(c => c.getRawValue());
     }
 
     public void drawCard(Card c)
@@ -453,16 +812,20 @@ public class Hand
     }
 }
 
-public class Play
+public class Meld
 {
-    private int playType; //0=set, 1=run
+    private int meldType; //0=set, 1=run
 
     private List<Card> cards, playbleCards;
 
-    public Play(List<Card> cards)
+    private Card[][] list;
+
+    public Meld(List<Card> cards, Card[][] c)
     {
         this.cards = cards;
-        this.playType = cards[0].getSuit() == cards[1].getSuit() ? 1 : 0;
+        this.meldType = cards[0].getSuit() == cards[1].getSuit() ? 1 : 0;
+        this.playbleCards = new List<Card>();
+        list = c;
         this.updatePlayableCards();
     }
 
@@ -471,9 +834,9 @@ public class Play
         return playbleCards.Contains(c);
     }
 
-    public int getPlayType()
+    public int getMeldType()
     {
-        return this.playType;
+        return this.meldType;
     }
 
     public List<Card> getCards()
@@ -487,15 +850,74 @@ public class Play
         updatePlayableCards();
     }
 
+    public string asText()
+    {
+        var temp = "";
+        foreach (var c in cards)
+        {
+            temp += c.asString();
+            temp += " ";
+        }
+        return temp;
+    }
+
     private void updatePlayableCards()
     {
-        if (playType == 0)
+        if (meldType == 0)
         {
-
+            playbleCards = (from v in list from c in v where (c.getRank() == cards[0].getRank()&&!cards.Contains(c)) select c).ToList();
         }
         else
         {
+            var t = cards.Select(c => c.getRank()).ToList();
+            var M = t.Max();
+            var m = t.Min();
+            playbleCards.Clear();
+            if (M == 13)
+            {
+                if (m == 1)
+                {
+                    return;
+                }
 
+                if (cards.Contains(list[cards[0].getSuit()][11]))
+                {
+                    playbleCards.Add(list[cards[0].getSuit()][0]);
+                    playbleCards.Add(list[cards[0].getSuit()][m-2]);
+                }
+                else
+                {
+                    playbleCards.Add(list[cards[0].getSuit()][11]);
+                    playbleCards.Add(list[cards[0].getSuit()][m]);
+                }
+
+            } else if (m == 1)
+            {
+                if (cards.Contains(list[cards[0].getSuit()][1]))
+                {
+                    playbleCards.Add(list[cards[0].getSuit()][12]);
+                    playbleCards.Add(list[cards[0].getSuit()][M]);
+                }
+                else
+                {
+                    playbleCards.Add(list[cards[0].getSuit()][1]);
+                    playbleCards.Add(list[cards[0].getSuit()][m-2]);
+                }
+            }
+            else
+            {
+                
+                if (cards.Contains(list[cards[0].getSuit()][M-2]))
+                {
+                    playbleCards.Add(list[cards[0].getSuit()][m-2]);
+                    playbleCards.Add(list[cards[0].getSuit()][M]);
+                }
+                else
+                {
+                    playbleCards.Add(list[cards[0].getSuit()][m]);
+                    playbleCards.Add(list[cards[0].getSuit()][M-2]);
+                }
+            }
         }
     }
 }
