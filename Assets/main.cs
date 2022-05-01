@@ -80,11 +80,29 @@ public class main : MonoBehaviour
         {
             t.color = Color.black;
         }
-
         handTexts[activePlayer].color = Color.red;
+
         if (activePlayer == 0 && !disableAuto)
         {
             //TODO: AI Turn 
+
+            //Draw:
+
+            //Play melds:
+
+            //Play on melds:
+
+            //Discard:
+
+            var vals = new int[hands[0].getKnownCards().Count];
+            Debug.Log("Card values (Higher=hold it, Lower=Discard):");
+            for (var i = 0; i < hands[0].getKnownCards().Count; i++)
+            {
+                vals[i] = hands[0].getKnownCards()[i].getValueInHand(hands, meldsOnTable, discardPile);
+                Debug.Log(hands[0].getKnownCards()[i].asString()+": " +vals[i]);
+            }
+
+
         }
         else
         {
@@ -107,9 +125,17 @@ public class main : MonoBehaviour
                 cards[s][r] = new Card(s, r+1);
             }
         }
+
+        foreach (var v in cards)
+        {
+            foreach (var c in v)
+            {
+                c.setList(cards);
+            }
+        }
     }
 
-    void setupButtons() //TODO: Delegates
+    void setupButtons() 
     {
         cardButtons = new[] { spades, hearts, diamonds, clubs }; //0=spades, 1=hearts, 2=diamonds, 3=clubs
         hideCardButtons();
@@ -228,6 +254,20 @@ public class main : MonoBehaviour
                 break;
             case 4: //discard
                 discarding = true;
+
+                //TODO: Remove this-------------------------------------------------------------------------
+                if (activePlayer==0)
+                {
+                    var vals = new int[hands[0].getKnownCards().Count];
+                    Debug.Log("Card values (Higher=hold it, Lower=Discard):");
+                    for (var i = 0; i < hands[0].getKnownCards().Count; i++)
+                    {
+                        vals[i] = hands[0].getKnownCards()[i].getValueInHand(hands, meldsOnTable, discardPile);
+                        Debug.Log(hands[0].getKnownCards()[i].asString() + ": " + vals[i]);
+                    }
+                }
+                //TODO:--------------------------------------------------------------------------------------
+
                 promptCardEntry(1,false);
                 break;
         }
@@ -478,9 +518,9 @@ public class main : MonoBehaviour
                     }
                 }
 
-                if (playingNewMeld)
+                if (playingNewMeld||discarding) 
                 {
-                    if (discardPile.Contains(c))
+                    if (discardPile.Contains(c) || meldsOnTable.Any(m=>m.getCards().Contains(c)))
                     {
                         cardButtons[c.getSuit()][c.getRank() - 1].gameObject.SetActive(false);
                     }
@@ -548,7 +588,7 @@ public class main : MonoBehaviour
         promptFirstCardEntry();
     }
 
-    bool validMeld(List<Card> c) //TODO: Check validity
+    bool validMeld(List<Card> c) 
     { //0=spades, 1=hearts, 2=diamonds, 3=clubs
         if (c[0].getSuit() == c[1].getSuit())
         {//run
@@ -604,11 +644,18 @@ public class Card
 
     private bool seen;
 
+    private Card[][] list;
+
     public Card(int suit, int rank)
     {
         this.suit = suit; //0=spades ♠, 1=hearts ♥, 2=diamonds ♦, 3=clubs ♣
         this.rank = rank;
         this.seen = false;
+    }
+
+    public void setList(Card[][] l)
+    {
+        this.list = l;
     }
 
     public string asString()
@@ -677,10 +724,58 @@ public class Card
         return rank < 10 ? 5 : 10;
     }
 
-    public int getValueInContext(Hand[] a, Meld[] t, Card[] d)
+    public int getValueInHand(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
     {
+        return getValueOfHolding(allHands,tableMelds,discardCards) - getValueOfDiscarding(allHands, tableMelds, discardCards);
+    }
 
-        return getRawValue();
+    private int getValueOfHolding(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
+    {
+        var raw = getRawValue();
+
+        var potentialValue = 0;
+
+        var potentialLoss = raw;
+
+        var h = allHands.First(j => j.getKnownCards().Contains(this));
+
+        if (tableMelds.Any(m => m.canPlay(this))) potentialValue += raw;
+
+        if (discardCards.Count > 1)
+        {
+            potentialValue += discardCards.Select((t2, i) => (from t1 in discardCards.Where((t1, j) => j != i) select new List<Card> {t2, t1, this} into t where validMeld(t) select new Meld(t, list) into nt select nt.getValue()).Sum()).Sum()/2;
+        }
+
+        if (h.getKnownCards().Count > 2)
+        {
+            var temp = (from c1 in h.getKnownCards() where c1 != this from c2 in h.getKnownCards() where c2 != this && c2 != c1 select new List<Card> {c1, c2, this} into t where validMeld(t) select new Meld(t, list).getValue()).Sum();
+
+            potentialValue += temp / 2;
+        }
+
+        //TODO: Add detection of partial melds
+
+        return potentialValue-potentialLoss;
+    }
+
+    private int getValueOfDiscarding(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
+    {
+        var raw = getRawValue();
+
+        var potentialValue = raw;
+
+        var potentialLoss = 0;
+
+        var h = allHands.First(j => j.getKnownCards().Contains(this));
+
+        if (tableMelds.Any(m => m.canPlay(this))) potentialLoss += raw;
+
+        foreach (var hand in allHands)
+        {
+            //TODO: make sure it won't make them go out
+        }
+
+        return potentialValue - potentialLoss;
     }
 
     public int getRank()
@@ -691,6 +786,46 @@ public class Card
     public int getSuit()
     {
         return this.suit;
+    }
+
+    private bool validMeld(List<Card> c)
+    { //0=spades, 1=hearts, 2=diamonds, 3=clubs
+        if (c[0].getSuit() == c[1].getSuit())
+        {//run
+            var s = c[0].getSuit();
+            var t = c.Select(k => k.getRank()).ToList();
+            var M = t.Max();
+            var m = t.Min();
+            if (c.Any(j => j.getSuit() != s))
+            {
+                return false;
+            }
+            for (var i = m; i < M + 1; i++)
+            {
+                var f = false;
+                foreach (var j in c)
+                {
+                    if (j.getRank() == i)
+                    {
+                        f = true;
+                    }
+                }
+
+                if (f == false)
+                {
+                    return false;
+                }
+            }
+        }
+        else
+        {//set
+            var r = c[0].getRank();
+            if (c.Any(j => j.getRank() != r))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 }
 
@@ -859,6 +994,11 @@ public class Meld
             temp += " ";
         }
         return temp;
+    }
+
+    public int getValue()
+    {
+        return cards.Sum(c => c.getRawValue());
     }
 
     private void updatePlayableCards()
