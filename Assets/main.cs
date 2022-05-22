@@ -94,7 +94,7 @@ public class main : MonoBehaviour
 
             //Discard:
 
-            var vals = new int[hands[0].getKnownCards().Count];
+            var vals = new float[hands[0].getKnownCards().Count];
             Debug.Log("Card values (Higher=hold it, Lower=Discard):");
             for (var i = 0; i < hands[0].getKnownCards().Count; i++)
             {
@@ -258,16 +258,18 @@ public class main : MonoBehaviour
                 //TODO: Remove this-------------------------------------------------------------------------
                 if (activePlayer==0)
                 {
-                    var vals = new int[hands[0].getKnownCards().Count];
+                    var vals = new float[hands[0].getKnownCards().Count];
                     Debug.Log("Card values (Higher=hold it, Lower=Discard):");
                     for (var i = 0; i < hands[0].getKnownCards().Count; i++)
                     {
                         vals[i] = hands[0].getKnownCards()[i].getValueInHand(hands, meldsOnTable, discardPile);
                         Debug.Log(hands[0].getKnownCards()[i].asString() + ": " + vals[i]);
+                        
                     }
+                    hands[0].debugUsefulCards(meldsOnTable);
                 }
                 //TODO:--------------------------------------------------------------------------------------
-
+                
                 promptCardEntry(1,false);
                 break;
         }
@@ -579,7 +581,7 @@ public class main : MonoBehaviour
         playerCount = n+1;
         for (var i = 0; i < n+1; i++)
         {
-            hands[i] = new Hand(i);
+            hands[i] = new Hand(i, cards);
         }
         foreach (var v in playerButtons)
         {
@@ -588,8 +590,9 @@ public class main : MonoBehaviour
         promptFirstCardEntry();
     }
 
-    bool validMeld(List<Card> c) 
+    private bool validMeld(List<Card> c)
     { //0=spades, 1=hearts, 2=diamonds, 3=clubs
+        if (c.Count != c.Distinct().Count() || c.Count < 3) return false;
         if (c[0].getSuit() == c[1].getSuit())
         {//run
             var s = c[0].getSuit();
@@ -602,7 +605,7 @@ public class main : MonoBehaviour
             }
             for (var i = m; i < M + 1; i++)
             {
-                var f = false; 
+                var f = false;
                 foreach (var j in c)
                 {
                     if (j.getRank() == i)
@@ -724,18 +727,23 @@ public class Card
         return rank < 10 ? 5 : 10;
     }
 
-    public int getValueInHand(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
+    public bool equals(Card c)
+    {
+        return c.getRank() == this.getRank() && c.getSuit() == this.getSuit();
+    }
+
+    public float getValueInHand(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
     {
         return getValueOfHolding(allHands,tableMelds,discardCards) - getValueOfDiscarding(allHands, tableMelds, discardCards);
     }
 
-    private int getValueOfHolding(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
+    private float getValueOfHolding(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
     {
         var raw = getRawValue();
 
-        var potentialValue = 0;
+        var potentialValue = 0f;
 
-        var potentialLoss = raw;
+        var potentialLoss = (float) raw;
 
         var h = allHands.First(j => j.getKnownCards().Contains(this));
 
@@ -743,38 +751,115 @@ public class Card
 
         if (discardCards.Count > 1)
         {
-            potentialValue += discardCards.Select((t2, i) => (from t1 in discardCards.Where((t1, j) => j != i) select new List<Card> {t2, t1, this} into t where validMeld(t) select new Meld(t, list) into nt select nt.getValue()).Sum()).Sum()/2;
+            potentialValue += discardCards.Select((t2, i) => (from t1 in discardCards.Where((t1, j) => j != i) select new List<Card> {t2, t1, this} into t where validMeld(t) select new Meld(t, list) into nt select nt.getValue()).Sum()).Sum()/2;    
         }
+
+        var temp = 0f;
+        foreach (var (c1, c2) in list.SelectMany(s => discardCards.SelectMany(c1 => s.Select(c2 => (c1, c2)))))
+        {
+            if (discardCards.Contains(c2) || c2.equals(this) || tableMelds.Any(m => m.getCards().Contains(c2))) continue;
+            var m = new List<Card> { this, c1, c2 };
+            if (validMeld(m))
+            {
+                temp += ((float)new Meld(m, list).getValue()) / (h.getKnownCards().Contains(c2) ? 1f : (allHands.Any(h => h.getKnownCards().Contains(c2)) ? 0.75f : 2f));
+            }
+        }
+        potentialValue += temp;
 
         if (h.getKnownCards().Count > 2)
         {
-            var temp = (from c1 in h.getKnownCards() where c1 != this from c2 in h.getKnownCards() where c2 != this && c2 != c1 select new List<Card> {c1, c2, this} into t where validMeld(t) select new Meld(t, list).getValue()).Sum();
+            float tem = (from c1 in h.getKnownCards() where c1 != this from c2 in h.getKnownCards() where c2 != this && c2 != c1 select new List<Card> {c1, c2, this} into t where validMeld(t) select new Meld(t, list).getValue()).Sum();
 
-            potentialValue += temp / 2;
+            tem/=2;
+            foreach (var (s, c1) in list.SelectMany(s => h.getKnownCards().Select(c1 => (s, c1))))
+            {
+                if (c1.equals(this)) continue;
+                foreach (var c2 in s)
+                {
+                    if (h.getKnownCards().Contains(c2) || discardCards.Contains(c2) || tableMelds.Any(m => m.getCards().Contains(c2))) continue;
+                    var m = new List<Card> { this, c1, c2 };
+                    if (validMeld(m))
+                    {
+                        tem += ((float) new Meld(m, list).getValue()) / (allHands.Any(h => h.getKnownCards().Contains(c2)) ? 1.5f : 2f);
+                    }
+                }
+            }
+
+            potentialValue += tem;
         }
 
-        //TODO: Add detection of partial melds
+        if (seen) potentialLoss += 2;
 
         return potentialValue-potentialLoss;
     }
 
-    private int getValueOfDiscarding(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
+    private float getValueOfDiscarding(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
     {
         var raw = getRawValue();
 
-        var potentialValue = raw;
+        var potentialValue = 0f;
 
-        var potentialLoss = 0;
+        var potentialLoss = 0f;
 
         var h = allHands.First(j => j.getKnownCards().Contains(this));
+        
+        var u = h.usefulCards(tableMelds);
 
         if (tableMelds.Any(m => m.canPlay(this))) potentialLoss += raw;
 
-        foreach (var hand in allHands)
+        foreach (var hand in allHands)//todo:check partial melds in other hands
         {
-            //TODO: make sure it won't make them go out
+            if (hand.getKnownCards().Contains(this)||hand.getKnownCards().Count<2) continue;
+            foreach (var c1 in hand.getKnownCards())
+            {
+
+                foreach (var c2 in hand.getKnownCards())
+                {
+                    if (c1.equals(c2)) continue;
+                    var m = new List<Card> { c1, c2, this };
+                    if (validMeld(m))
+                    {
+                        var j = new Meld(m, list);
+                        if (hand.getSize() < 3 + hand.getPlayer())
+                        {
+                            potentialLoss += h.getValue() + j.getValue();
+                        }
+                        else
+                        {
+                            potentialLoss += j.getValue();
+                        }
+                    }
+                }
+            }
+        }
+        foreach(var hand in allHands)
+        {
+            if (hand.getKnownCards().Contains(this)||hand.getKnownCards().Count<1) continue;
+            foreach(var c1 in hand.getKnownCards())
+            {
+                if (c1.getRank() != getRank() && c1.getSuit() != getSuit()) continue;
+                foreach(var s in list)
+                {
+                    foreach(var c2 in s)
+                    {
+                        if (c1.getRank() != c2.getRank() && c1.getSuit() != c2.getSuit()) continue;
+                        if (hand.getKnownCards().Contains(c2) || equals(c2) || discardCards.Contains(c2)) continue;
+                        var m = new List<Card> { c1, c2, this };
+                        if (validMeld(m))
+                        {
+                            var j = new Meld(m, list);
+                            potentialLoss += j.getValue() / 2f;
+                        }
+                    }
+                }
+            }
         }
 
+        if (u.Any(c => c.c.getRank() == getRank()))
+        {
+            potentialLoss += (from us in u where us.c.getRank() == getRank() select us.v).Sum()/3f;
+        }
+        
         return potentialValue - potentialLoss;
     }
 
@@ -790,6 +875,7 @@ public class Card
 
     private bool validMeld(List<Card> c)
     { //0=spades, 1=hearts, 2=diamonds, 3=clubs
+        if (c.Count != c.Distinct().Count() || c.Count < 3) return false;
         if (c[0].getSuit() == c[1].getSuit())
         {//run
             var s = c[0].getSuit();
@@ -833,20 +919,100 @@ public class Hand
 {
     private int size, value, player;
     private List<Card> cards, tableCards;
-    public Hand(int p)
+    private Card[][] list;
+    public Hand(int p, Card[][] list)
     {
         this.size = 7;
         this.player = p;
         this.cards = new List<Card>();
         this.tableCards = new List<Card>();
+        this.list = list;
     }
 
     public void setHand(List<Card> h)
     {
-        foreach (var c in h)
+        cards.AddRange(h);
+    }
+
+    public List<(Card c,float v)> usefulCards(List<Meld> tableMelds)
+    {
+        var l = new List<(Card c, float v)>();
+        foreach(var s in list)
         {
-            cards.Add(c);
+            foreach(var c1 in s)
+            {
+                if (getKnownCards().Contains(c1)||tableMelds.Any(m=>m.getCards().Contains(c1))) continue;
+                foreach(var c2 in getKnownCards())
+                {
+                    foreach(var c3 in getKnownCards())
+                    {
+                        if (c2.equals(c3)) continue;
+                        var t = new List<Card> { c1, c2, c3 };
+                        if (validMeld(t))
+                        {
+                            var m = new Meld(t, list);
+                            var v = ((float) m.getValue())/2;
+                            if (l.Any(i => i.c.equals(c1)))
+                            {
+                                v += l.First(i => i.c.equals(c1)).v;
+                                l.Remove(l.First(i => i.c.equals(c1)));
+                            }
+                            l.Add((c1, v));
+                        }
+                    }
+                }
+            }
         }
+        return l;
+    }
+
+    public void debugUsefulCards(List<Meld> tableMelds)
+    {
+        foreach(var (c,v) in usefulCards(tableMelds))
+        {
+            Debug.Log("The card " + c.asString() + " is useful with value " + v + ".");
+        }
+    }
+
+    private bool validMeld(List<Card> c)
+    { //0=spades, 1=hearts, 2=diamonds, 3=clubs
+        if (c.Count != c.Distinct().Count() || c.Count < 3) return false;
+        if (c[0].getSuit() == c[1].getSuit())
+        {//run
+            var s = c[0].getSuit();
+            var t = c.Select(k => k.getRank()).ToList();
+            var M = t.Max();
+            var m = t.Min();
+            if (c.Any(j => j.getSuit() != s))
+            {
+                return false;
+            }
+            for (var i = m; i < M + 1; i++)
+            {
+                var f = false;
+                foreach (var j in c)
+                {
+                    if (j.getRank() == i)
+                    {
+                        f = true;
+                    }
+                }
+
+                if (f == false)
+                {
+                    return false;
+                }
+            }
+        }
+        else
+        {//set
+            var r = c[0].getRank();
+            if (c.Any(j => j.getRank() != r))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     public string toText()
