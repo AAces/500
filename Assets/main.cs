@@ -444,7 +444,23 @@ public class main : MonoBehaviour
                     hands[activePlayer].playCard(c, m[0]);
                     break;
                 case 2:
-                    setOrRun(c, m);
+                    if (m[0].getMeldType() == m[1].getMeldType())
+                    {
+                        hands[activePlayer].playCard(c, m[0]);
+                    }
+                    else
+                    {
+                        setOrRun(c, m);
+                    }
+                    break;
+                case 3:
+                    if (m[0].getMeldType() == m[1].getMeldType())
+                    {
+                        setOrRun(c, new List<Meld> { m[0], m[2] });
+                    } else
+                    {
+                        setOrRun(c, new List<Meld> { m[0], m[1] });
+                    }
                     break;
             }
             updateMeldsText();
@@ -603,20 +619,48 @@ public class main : MonoBehaviour
             {
                 return false;
             }
-            for (var i = m; i < M + 1; i++)
+
+            if (m == 1 && M == 13)
             {
-                var f = false;
-                foreach (var j in c)
+                if (t.Contains(2) && c.Count == 3) return false;
+                if (c.Count == 13) return true;
+                var temp = new List<Card>();
+                temp.AddRange(c);
+                temp.Remove(c.First(k => k.getRank() == 13));
+
+                var i = new List<int> { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }.First(j => !c.Any(k => k.getRank() == j));
+                var l = new List<int> { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }.Last(j => !c.Any(k => k.getRank() == j));
+
+                for (var r = 12; i > l; r--)
                 {
-                    if (j.getRank() == i)
+                    if (!c.Any(k => k.getRank() == r))
                     {
-                        f = true;
+                        return false;
                     }
                 }
-
-                if (f == false)
+                for (var r = 2; r < i; r++)
                 {
-                    return false;
+                    if (!c.Any(k => k.getRank() == r))
+                    {
+                        return false;
+                    }
+                }
+                for (var r = i; r <= l; r++)
+                {
+                    if (c.Any(k => k.getRank() == r))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                for (var i = m; i < M + 1; i++)
+                {
+                    if (!c.Any(k => k.getRank() == i))
+                    {
+                        return false;
+                    }
                 }
             }
         }
@@ -747,11 +791,20 @@ public class Card
 
         var h = allHands.First(j => j.getKnownCards().Contains(this));
 
-        if (tableMelds.Any(m => m.canPlay(this))) potentialValue += raw;
+        if (tableMelds.Any(m => m.canPlay(this))) {
+            if (allHands[1].getKnownCards().Count == 1)
+            {
+                potentialValue += h.getValue();
+            }
+            else
+            {
+                potentialValue += 1.5f * raw;
+            }
+        }
 
         if (discardCards.Count > 1)
         {
-            potentialValue += discardCards.Select((t2, i) => (from t1 in discardCards.Where((t1, j) => j != i) select new List<Card> {t2, t1, this} into t where validMeld(t) select new Meld(t, list) into nt select nt.getValue()).Sum()).Sum()/2;    
+            potentialValue += discardCards.Select((t2, i) => (from t1 in discardCards.Where((t1, j) => j != i) select new List<Card> {t2, t1, this} into t where validMeld(t) select new Meld(t, list) into nt select nt.getValue()).Sum()).Sum()*1.5f;    
         }
 
         var temp = 0f;
@@ -807,7 +860,7 @@ public class Card
 
         if (tableMelds.Any(m => m.canPlay(this))) potentialLoss += raw;
 
-        foreach (var hand in allHands)//todo:check partial melds in other hands
+        foreach (var hand in allHands)
         {
             if (hand.getKnownCards().Contains(this)||hand.getKnownCards().Count<2) continue;
             foreach (var c1 in hand.getKnownCards())
@@ -886,20 +939,48 @@ public class Card
             {
                 return false;
             }
-            for (var i = m; i < M + 1; i++)
+
+            if (m == 1 && M == 13)
             {
-                var f = false;
-                foreach (var j in c)
+                if (t.Contains(2) && c.Count == 3) return false;
+                if (c.Count == 13) return true;
+                var temp = new List<Card>();
+                temp.AddRange(c);
+                temp.Remove(c.First(k=>k.getRank()==13));
+
+                var i = new List<int> { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }.First(j => !c.Any(k => k.getRank() == j));
+                var l = new List<int> { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }.Last(j => !c.Any(k => k.getRank() == j));
+
+                for (var r = 12; i > l; r--)
                 {
-                    if (j.getRank() == i)
+                    if (!c.Any(k => k.getRank() == r))
                     {
-                        f = true;
+                        return false;
                     }
                 }
-
-                if (f == false)
+                for (var r = 2; r < i; r++)
                 {
-                    return false;
+                    if (!c.Any(k => k.getRank() == r))
+                    {
+                        return false;
+                    }
+                }
+                for (var r = i; r <= l; r++)
+                {
+                    if(c.Any(k => k.getRank() == r))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                for (var i = m; i < M + 1; i++) 
+                {
+                    if (!c.Any(k => k.getRank() == i))
+                    {
+                        return false;
+                    }
                 }
             }
         }
@@ -987,20 +1068,48 @@ public class Hand
             {
                 return false;
             }
-            for (var i = m; i < M + 1; i++)
+
+            if (m == 1 && M == 13)
             {
-                var f = false;
-                foreach (var j in c)
+                if (t.Contains(2) && c.Count == 3) return false;
+                if (c.Count == 13) return true;
+                var temp = new List<Card>();
+                temp.AddRange(c);
+                temp.Remove(c.First(k => k.getRank() == 13));
+
+                var i = new List<int> { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }.First(j => !c.Any(k => k.getRank() == j));
+                var l = new List<int> { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }.Last(j => !c.Any(k => k.getRank() == j));
+
+                for (var r = 12; i > l; r--)
                 {
-                    if (j.getRank() == i)
+                    if (!c.Any(k => k.getRank() == r))
                     {
-                        f = true;
+                        return false;
                     }
                 }
-
-                if (f == false)
+                for (var r = 2; r < i; r++)
                 {
-                    return false;
+                    if (!c.Any(k => k.getRank() == r))
+                    {
+                        return false;
+                    }
+                }
+                for (var r = i; r <= l; r++)
+                {
+                    if (c.Any(k => k.getRank() == r))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                for (var i = m; i < M + 1; i++)
+                {
+                    if (!c.Any(k => k.getRank() == i))
+                    {
+                        return false;
+                    }
                 }
             }
         }
