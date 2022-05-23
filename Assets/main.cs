@@ -28,11 +28,13 @@ public class main : MonoBehaviour
 
     private List<Card> selectedCards, discardPile;
 
-    private int activePlayer, playerCount, expectedCards;
+    private int activePlayer, playerCount, expectedCards, cardsInDeck;
 
     public bool disableAuto;
 
     private bool drawFromDeck, turnOver, playingOnExisting, playingNewMeld, drawingFromDiscard, firstCardEntry, discarding, min, selectingCards;
+
+    private (Meld m, bool t) forcedMeld;
 
     void Start()
     {
@@ -53,6 +55,8 @@ public class main : MonoBehaviour
         drawFromDeck = false;
         turnOver = false;
         min = false;
+        forcedMeld = (null, false);
+        cardsInDeck = 52;
         selectedCardsText.text = "";
         expectedCardsText.text = "";
         tableMeldsText.text = "";
@@ -75,7 +79,7 @@ public class main : MonoBehaviour
             v.gameObject.SetActive(true);
         }
     }
-
+    
     void turn()
     {
         foreach (var t in handTexts)
@@ -92,6 +96,7 @@ public class main : MonoBehaviour
 
         if (activePlayer == 0 && !disableAuto)
         {
+            forcedMeld = (null, false);
             instructionsText.text = "";
             instructionsText.gameObject.SetActive(true);
             endTurnButton.gameObject.SetActive(false);
@@ -191,7 +196,9 @@ public class main : MonoBehaviour
                 
 
                 var maxValue = (from j in t select j.v).Max();
-                var cardToDrawFrom = discardPile.First(j=>(from m in t where m.v==maxValue select m.s.c).Contains(j)); 
+                var cardToDrawFrom = discardPile.First(j=>(from m in t where m.v==maxValue select m.s.c).Contains(j));
+
+                forcedMeld = (t.First(j => j.v == maxValue).s.m, true);
 
                 instructionsText.text = "•Pick up from discard pile, starting at " + cardToDrawFrom.asString(); //Right now, always draws the highest-point meld from table
 
@@ -220,6 +227,19 @@ public class main : MonoBehaviour
     void finishTurn()
     {
         //Play melds:
+
+        if (forcedMeld.t)
+        {
+            hands[0].playMeld(forcedMeld.m);
+            meldsOnTable.Add(forcedMeld.m);
+            updateMeldsText();
+            var s = "";
+            foreach (var c in forcedMeld.m.getCards())
+            {
+                s += " " + c.asString();
+            }
+            instructionsText.text += "\n•Play meld" + s;
+        }
 
         Another:
         var possiblePlays = new List<List<Card>>();
@@ -271,7 +291,7 @@ public class main : MonoBehaviour
         }
         if (possiblePlays.Count == 0)
         {
-            goto Skip;
+            goto PlayAgain;
         }
         var max = (from play in possiblePlays select (from c in play select c.getRawValue()).Sum()).Max();
         var p = new Meld((from play in possiblePlays where (from c in play select c.getRawValue()).Sum()==max select play).First(), cards);
@@ -288,19 +308,30 @@ public class main : MonoBehaviour
         {
             goto Another;
         }
-        Skip:
-        //Play on melds:
 
+        //Play on melds:
+        
+        PlayAgain:
         var tempHand = new List<Card>();
         tempHand.AddRange(hands[0].getKnownCards());
-
+        var played = false;
         foreach(var c in tempHand)
         {
             if (!hands[0].getKnownCards().Contains(c)) continue;
             var av = meldsOnTable.Where(m => m.canPlay(c)).ToList();
             if (av.Count == 0) continue;
-            Debug.Log("Considering playing " + c.asString() + ". Raw value: " + c.getRawValue() + ". Value in hand: " + c.getValueInHand(hands, meldsOnTable, discardPile) + ".");
-            if(c.getRawValue()>c.getValueInHand(hands, meldsOnTable, discardPile)) //TODO: Make this calculation better, esp considering when I could go out
+            
+            var valsT = new List<(Card c, float v)>();
+            foreach (var cr in hands[0].getKnownCards())
+            {
+                valsT.Add((cr, cr.getValueInHand(hands, meldsOnTable, discardPile, cardsInDeck)));
+            }
+            var minValueT = (from t in valsT select t.v).Min();
+            var value = valsT.First(k => k.c.equals(c)).v;
+            var forcePlay = value == minValueT || hands[0].getKnownCards().Count<2;
+            Debug.Log("Considering playing " + c.asString() + ". Raw value: " + c.getRawValue() + ". Value in hand: " + value + ".");
+
+            if (2*c.getRawValue()>value || forcePlay)
             {
                 switch (av.Count)
                 {
@@ -444,9 +475,11 @@ public class main : MonoBehaviour
                         }
                         break;
                 }
+                played = true;
                 updateMeldsText();
             }
         }
+        if (played) goto PlayAgain;
 
         //Discard:
 
@@ -454,14 +487,14 @@ public class main : MonoBehaviour
         Debug.Log("Card values (Higher=hold it, Lower=Discard):");
         foreach (var c in hands[0].getKnownCards())
         {
-            vals.Add((c, c.getValueInHand(hands, meldsOnTable, discardPile)));
+            vals.Add((c, c.getValueInHand(hands, meldsOnTable, discardPile, cardsInDeck)));
             Debug.Log(c.asString() + ": " + vals.First(k => k.c.equals(c)).v);
         }
 
         var minValue = (from t in vals select t.v).Min();
         var toDiscard = vals.First(k => k.v == minValue).c;
 
-        instructionsText.text += "\n•Discard " + toDiscard.asString() + " (valued at " + minValue + ")" + "\nPress 'End Turn' once all actions completed.";
+        instructionsText.text += "\n•Discard " + toDiscard.asString() + " (valued at " + minValue + ")" + "\n\nPress 'End Turn' once all actions completed.";
 
         hands[0].discard(toDiscard);
         discardPile.Add(toDiscard);
@@ -611,7 +644,7 @@ public class main : MonoBehaviour
                 else
                 {
                     hands[activePlayer].blindDraw();
-                } 
+                }
                 updateHandTexts();
                 break;
             case 1: //draw from discard
@@ -641,7 +674,7 @@ public class main : MonoBehaviour
                     Debug.Log("Card values (Higher=hold it, Lower=Discard):");
                     foreach (var c in hands[0].getKnownCards())
                     {
-                        vals.Add((c, c.getValueInHand(hands, meldsOnTable, discardPile)));
+                        vals.Add((c, c.getValueInHand(hands, meldsOnTable, discardPile, cardsInDeck)));
                         Debug.Log(c.asString() + ": " + vals.First(k => k.c.equals(c)).v);
                     }
                 }
@@ -686,6 +719,7 @@ public class main : MonoBehaviour
         if (drawFromDeck)
         {
             expectedCardsText.text = "Enter card picked up from deck (1)";
+            cardsInDeck--;
         }
         
         selectedCards.Clear();
@@ -978,6 +1012,7 @@ public class main : MonoBehaviour
         {
             v.gameObject.SetActive(false);
         }
+        cardsInDeck -= 7*(n+1)+1;
         promptFirstCardEntry();
     }
 
@@ -1151,9 +1186,9 @@ public class Card
         return c.getRank() == this.getRank() && c.getSuit() == this.getSuit();
     }
 
-    public float getValueInHand(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
+    public float getValueInHand(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards, int cardsInDeck)
     {
-        return getValueOfHolding(allHands,tableMelds,discardCards) - getValueOfDiscarding(allHands, tableMelds, discardCards);
+        return getValueOfHolding(allHands,tableMelds,discardCards) - getValueOfDiscarding(allHands, tableMelds, discardCards, cardsInDeck);
     }
 
     private float getValueOfHolding(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
@@ -1173,7 +1208,7 @@ public class Card
             }
             else
             {
-                potentialValue += 2f * raw;
+                potentialValue += raw;
             }
         }
 
@@ -1198,7 +1233,7 @@ public class Card
         {
             float tem = (from c1 in h.getKnownCards() where c1 != this from c2 in h.getKnownCards() where c2 != this && c2 != c1 select new List<Card> {c1, c2, this} into t where validMeld(t) select new Meld(t, list).getValue()).Sum();
 
-            tem/=2;
+            tem/=2f;
             foreach (var (s, c1) in list.SelectMany(s => h.getKnownCards().Select(c1 => (s, c1))))
             {
                 if (c1.equals(this)) continue;
@@ -1216,14 +1251,15 @@ public class Card
             potentialValue += tem;
         }
 
-        if (seen) potentialLoss += 2;
+        if (seen) potentialLoss += 2f;
+        if ((getRank() == 2 || (!h.getKnownCards().Contains(list[getSuit()][1]) && getRank() == 3) || (!h.getKnownCards().Contains(list[getSuit()][12]) && getRank() == 12) || getRank()==13) && tableMelds.Any(m => !m.getCards().Contains(list[getSuit()][0]))) potentialValue += 3f;
 
         return potentialValue-potentialLoss;
     }
 
-    private float getValueOfDiscarding(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards)
+    private float getValueOfDiscarding(Hand[] allHands, List<Meld> tableMelds, List<Card> discardCards, int cardsInDeck)
     {
-        var raw = getRawValue();
+        var raw = (float) getRawValue();
 
         var potentialValue = 0f;
 
@@ -1234,6 +1270,8 @@ public class Card
         var u = h.usefulCards(tableMelds);
 
         if (tableMelds.Any(m => m.canPlay(this))) potentialLoss += raw;
+
+        if (allHands.Where(p => !p.getKnownCards().Contains(this)).Any(p => p.getSize() < 2)) potentialValue += 2f*(1f-cardsInDeck/52f)*raw;
 
         foreach (var hand in allHands)
         {
