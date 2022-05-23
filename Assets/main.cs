@@ -249,8 +249,10 @@ public class main : MonoBehaviour
             var l = new List<Card> { c1, c2, c3 };
             if (validMeld(l) && !possiblePlays.Contains(l)) possiblePlays.Add(l);
         }
-        
-        foreach(var play in possiblePlays)
+
+        var tempPlay = new List<List<Card>>();
+        tempPlay.AddRange(possiblePlays);
+        foreach(var play in tempPlay)
         {
             foreach(var c in discardPile)
             {
@@ -259,7 +261,7 @@ public class main : MonoBehaviour
 
                 if (validMeld(temp))
                 {
-                    var remove = true;
+                    var remove = !(hands.Any(h=>h.getSize()<2)||(hands.Any(h=>h.getSize()<3)&&cardsInDeck<20));
                     foreach (var hand in hands)
                     {
                         if (!remove) break;
@@ -328,7 +330,7 @@ public class main : MonoBehaviour
             }
             var minValueT = (from t in valsT select t.v).Min();
             var value = valsT.First(k => k.c.equals(c)).v;
-            var forcePlay = value == minValueT || hands[0].getKnownCards().Count<2;
+            var forcePlay = value == minValueT || hands.Any(h=>h.getSize()<2) || hands[0].getSize()==2;
             Debug.Log("Considering playing " + c.asString() + ". Raw value: " + c.getRawValue() + ". Value in hand: " + value + ".");
 
             if (2*c.getRawValue()>value || forcePlay)
@@ -964,7 +966,7 @@ public class main : MonoBehaviour
                     }
                 }
 
-                if (playingOnExisting && !meldsOnTable.Any(m => m.canPlay(c)))
+                if (playingOnExisting && (!meldsOnTable.Any(m => m.canPlay(c))||meldsOnTable.Any(m=>m.getCards().Contains(c))))
                 {
                     cardButtons[c.getSuit()][c.getRank() - 1].gameObject.SetActive(false);
                 }
