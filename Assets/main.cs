@@ -8,13 +8,13 @@ using UnityEngine.UI;
 public class main : MonoBehaviour
 {
 
-    public Button cardSelectSubmitButton, cardSelectRemoveButton, setButton, runButton;
+    public Button cardSelectSubmitButton, cardSelectRemoveButton, setButton, runButton, endTurnButton;
 
     public Button[] playerButtons, actionButtons, numberButtons, spades, hearts, diamonds, clubs; //0=spades, 1=hearts, 2=diamonds, 3=clubs
 
     private Button[][] cardButtons;
 
-    public Text selectedCardsText, expectedCardsText, discardPileText, tableMeldsText;
+    public Text selectedCardsText, expectedCardsText, discardPileText, tableMeldsText, instructionsText;
 
     public Text[] handTexts;
 
@@ -57,10 +57,12 @@ public class main : MonoBehaviour
         expectedCardsText.text = "";
         tableMeldsText.text = "";
         discardPileText.text = "";
+        instructionsText.text = "";
         expectedCardsText.gameObject.SetActive(false);
         selectedCardsText.gameObject.SetActive(false);
         discardPileText.gameObject.SetActive(false);
         tableMeldsText.gameObject.SetActive(false);
+        instructionsText.gameObject.SetActive(false);
         setupCards();
         setupButtons();
         foreach (var v in handTexts)
@@ -82,27 +84,128 @@ public class main : MonoBehaviour
         }
         handTexts[activePlayer].color = Color.red;
 
+        actionButtons[0].gameObject.SetActive(false);
+        actionButtons[1].gameObject.SetActive(false);
+        actionButtons[2].gameObject.SetActive(false);
+        actionButtons[3].gameObject.SetActive(false);
+        actionButtons[4].gameObject.SetActive(false);
+
         if (activePlayer == 0 && !disableAuto)
         {
+            instructionsText.text = "";
+            instructionsText.gameObject.SetActive(true);
+            endTurnButton.gameObject.SetActive(false);
+
             //TODO: AI Turn 
 
             //Draw:
 
-            //Play melds:
+            var meldsThatCanBeMadeFromPile = new List<(Meld m, Card c)>();
 
-            //Play on melds:
-
-            //Discard:
-
-            var vals = new float[hands[0].getKnownCards().Count];
-            Debug.Log("Card values (Higher=hold it, Lower=Discard):");
-            for (var i = 0; i < hands[0].getKnownCards().Count; i++)
+            foreach(var (c1,c2) in discardPile.SelectMany(c1 => discardPile.Select(c2 => (c1, c2))))
             {
-                vals[i] = hands[0].getKnownCards()[i].getValueInHand(hands, meldsOnTable, discardPile);
-                Debug.Log(hands[0].getKnownCards()[i].asString()+": " +vals[i]);
+                if (c1.equals(c2)) continue;
+                foreach(var c3 in hands[0].getKnownCards())
+                {
+                    var t = new List<Card> { c1, c2, c3 };
+                    if (validMeld(t)) meldsThatCanBeMadeFromPile.Add((new Meld(t, cards),discardPile.First(k=>k.equals(c1)||k.equals(c2))));
+                }
             }
 
+            foreach(var (c1,c2) in hands[0].getKnownCards().SelectMany(c1 => hands[0].getKnownCards().Select(c2 => (c1, c2))))
+            {
+                if (c1.equals(c2)) continue;
+                foreach (var c3 in discardPile)
+                {
+                    var t = new List<Card> { c1, c2, c3 };
+                    if (validMeld(t)) meldsThatCanBeMadeFromPile.Add((new Meld(t, cards), c3));
+                }
+            }
 
+            foreach (var (c1, c2, c3) in discardPile.SelectMany(c1 => discardPile.SelectMany(c2 => discardPile.Select(c3 => (c1, c2, c3)))))
+            {
+                if(c1.equals(c2)||c1.equals(c3)||c2.equals(c3)) continue;
+                var t = new List<Card> { c1, c2, c3 };
+                if (validMeld(t)) meldsThatCanBeMadeFromPile.Add((new Meld(t, cards), discardPile.First(k => k.equals(c1) || k.equals(c2) || k.equals(c3))));
+            }
+
+            var tempM = new List<(Meld m, Card c)>();
+            tempM.AddRange(meldsThatCanBeMadeFromPile);
+            //------------------------------------------------------------------- Combine melds that are longer than 3 cards. Do it twice just in case
+            foreach (var (m1,m2) in tempM.SelectMany(m1 => tempM.Select(m2 => (m1, m2)))){
+                if (m1.Equals(m2) || !meldsThatCanBeMadeFromPile.Contains(m1) || !meldsThatCanBeMadeFromPile.Contains(m2)) continue;
+                var t = m1.m.getCards().Union(m2.m.getCards()).ToList();
+                if (validMeld(t))
+                {
+                    meldsThatCanBeMadeFromPile.Remove(m1);
+                    meldsThatCanBeMadeFromPile.Remove(m2);
+                    meldsThatCanBeMadeFromPile.Add((new Meld(t, cards), discardPile.First(k => k.equals(m1.c) || k.equals(m2.c))));
+                }
+            }
+            tempM.Clear();
+            tempM.AddRange(meldsThatCanBeMadeFromPile);
+            foreach (var (m1, m2) in tempM.SelectMany(m1 => tempM.Select(m2 => (m1, m2))))
+            {
+                if (m1.Equals(m2)||!meldsThatCanBeMadeFromPile.Contains(m1)||!meldsThatCanBeMadeFromPile.Contains(m2)) continue;
+                var t = m1.m.getCards().Union(m2.m.getCards()).ToList();
+                if (validMeld(t))
+                {
+                    meldsThatCanBeMadeFromPile.Remove(m1);
+                    meldsThatCanBeMadeFromPile.Remove(m2);
+                    meldsThatCanBeMadeFromPile.Add((new Meld(t, cards), discardPile.First(k => k.equals(m1.c) || k.equals(m2.c))));
+                }
+            }
+            //-------------------------------------------------------------------
+            if (meldsThatCanBeMadeFromPile.Count == 0)
+            {//can't pick up from pile
+                instructionsText.text = "•Pick up from draw pile and enter drawn card";
+                drawFromDeck = true;
+                promptCardEntry(1, false);
+            } else
+            {//could pick up from pile
+
+                var t = new List<((Meld m, Card c) s, int v)>();
+
+                foreach (var x in meldsThatCanBeMadeFromPile)
+                {
+                    var tl = new List<Card>();
+                    var ind = discardPile.IndexOf(x.c);
+                    for (var j = discardPile.Count - 1; j >= ind; j--)
+                    {
+                        tl.Add(discardPile[j]);
+                    }
+
+                    var additional = 0;
+
+                    foreach(var y in meldsThatCanBeMadeFromPile)
+                    {
+                        if (y.c.equals(x.c)||discardPile.IndexOf(y.c)<=discardPile.IndexOf(x.c)) continue;
+                        if (x.m.getCards().Intersect(y.m.getCards()).Count() == 0)
+                        {
+                            if(y.m.getValue()>additional) additional = y.m.getValue();
+                        }
+                    }
+
+                    t.Add((x,2*x.m.getValue()-(from c in tl select c.getRawValue()).Sum() + 2*additional )); 
+                }
+                
+
+                var maxValue = (from j in t select j.v).Max();
+                var cardToDrawFrom = discardPile.First(j=>(from m in t where m.v==maxValue select m.s.c).Contains(j)); 
+
+                instructionsText.text = "•Pick up from discard pile, starting at " + cardToDrawFrom.asString(); //Right now, always draws the highest-point meld from table
+
+                var i = discardPile.IndexOf(cardToDrawFrom);
+                for (var j = discardPile.Count - 1; j >= i; j--)
+                {
+                    hands[0].drawCard(discardPile[j]);
+                    discardPile.RemoveAt(j);
+                }
+                updateDiscardPile();
+
+                finishTurn();
+            }
+            
         }
         else
         {
@@ -112,6 +215,278 @@ public class main : MonoBehaviour
             actionButtons[3].gameObject.SetActive(false);
             actionButtons[4].gameObject.SetActive(false);
         }
+    }
+
+    void finishTurn()
+    {
+        //Play melds:
+
+        Another:
+        var possiblePlays = new List<List<Card>>();
+        foreach(var (c1, c2, c3) in hands[0].getKnownCards().SelectMany(c1 => hands[0].getKnownCards().SelectMany(c2 => hands[0].getKnownCards().Select(c3 => (c1, c2, c3)))))
+        {
+            if (c1.equals(c2) || c1.equals(c3) || c2.equals(c3)) continue;
+            var l = new List<Card> { c1, c2, c3 };
+            if (validMeld(l) && !possiblePlays.Contains(l)) possiblePlays.Add(l);
+        }
+        
+        foreach(var play in possiblePlays)
+        {
+            foreach(var c in discardPile)
+            {
+                var temp = new List<Card> { c };
+                temp.AddRange(play);
+
+                if (validMeld(temp))
+                {
+                    var remove = true;
+                    foreach (var hand in hands)
+                    {
+                        if (!remove) break;
+                        if (hand.getPlayer()==0 || hand.getKnownCards().Count < 1) continue;
+                        foreach (var c1 in hand.getKnownCards())
+                        {
+                            if (!remove) break;
+                            if (c1.getRank() != c.getRank() && c1.getSuit() != c.getSuit()) continue;
+                            foreach (var s in cards)
+                            {
+                                if (!remove) break;
+                                foreach (var c2 in s)
+                                {
+                                    if (!remove) break;
+                                    if (c1.getRank() != c2.getRank() && c1.getSuit() != c2.getSuit()) continue;
+                                    if (c.equals(c2)||meldsOnTable.Any(k=>k.getCards().Contains(c2))) continue;
+                                    var m = new List<Card> { c1, c2, c };
+                                    if (validMeld(m))
+                                    {
+                                        remove = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (remove) possiblePlays.Remove(play);
+                }
+            }
+        }
+        if (possiblePlays.Count == 0)
+        {
+            goto Skip;
+        }
+        var max = (from play in possiblePlays select (from c in play select c.getRawValue()).Sum()).Max();
+        var p = new Meld((from play in possiblePlays where (from c in play select c.getRawValue()).Sum()==max select play).First(), cards);
+        hands[0].playMeld(p);
+        meldsOnTable.Add(p);
+        updateMeldsText();
+        var st = "";
+        foreach(var c in p.getCards())
+        {
+            st += " " + c.asString();
+        }
+        instructionsText.text += "\n•Play meld" + st;
+        if (possiblePlays.Count() > 1)
+        {
+            goto Another;
+        }
+        Skip:
+        //Play on melds:
+
+        var tempHand = new List<Card>();
+        tempHand.AddRange(hands[0].getKnownCards());
+
+        foreach(var c in tempHand)
+        {
+            if (!hands[0].getKnownCards().Contains(c)) continue;
+            var av = meldsOnTable.Where(m => m.canPlay(c)).ToList();
+            if (av.Count == 0) continue;
+            Debug.Log("Considering playing " + c.asString() + ". Raw value: " + c.getRawValue() + ". Value in hand: " + c.getValueInHand(hands, meldsOnTable, discardPile) + ".");
+            if(c.getRawValue()>c.getValueInHand(hands, meldsOnTable, discardPile)) //TODO: Make this calculation better, esp considering when I could go out
+            {
+                switch (av.Count)
+                {
+                    case 1:
+                        hands[0].playCard(c, av[0]);
+                        var st2 = "";
+                        foreach (var c2 in av[0].getCards())
+                        {
+                            if (c2.equals(c)) continue;
+                            st2 += " " + c2.asString();
+                        }
+                        instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st2;
+                        break;
+                    case 2:
+                        if (av[0].getMeldType() == av[1].getMeldType())
+                        {
+                            hands[0].playCard(c, av[0]);
+                            var st3 = "";
+                            foreach (var c2 in av[0].getCards())
+                            {
+                                if (c2.equals(c)) continue;
+                                st3 += " " + c2.asString();
+                            }
+                            instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                        }
+                        else
+                        {
+                            var set = 0;
+                            var run = 0;
+
+                            if(av[0].getCards()[0].getRank() == av[0].getCards()[1].getRank())
+                            {
+                                run = 1;
+                            } else
+                            {
+                                set = 1;
+                            }
+
+                            var test = av[run].getCards().Contains(cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()]) ? cards[c.getSuit()][c.getRank() == 1 ? 12 : c.getRank() - 2]:cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()];
+                            if (!hands[0].getKnownCards().Contains(test) && hands.Any(h => h.getKnownCards().Contains(test)))
+                            {
+                                hands[0].playCard(c, av[set]);
+                                var st3 = "";
+                                foreach (var c2 in av[set].getCards())
+                                {
+                                    if (c2.equals(c)) continue;
+                                    st3 += " " + c2.asString();
+                                }
+                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                            }
+                            else
+                            {
+                                hands[0].playCard(c, av[run]);
+                                var st3 = "";
+                                foreach (var c2 in av[run].getCards())
+                                {
+                                    if (c2.equals(c)) continue;
+                                    st3 += " " + c2.asString();
+                                }
+                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                            }
+                            
+                        }
+                        break;
+                    case 3:
+                        if (av[0].getMeldType() == av[1].getMeldType())
+                        {
+                            var set = 0;
+                            var run = 0;
+
+                            if (av[0].getCards()[0].getRank() == av[0].getCards()[1].getRank())
+                            {
+                                run = 2;
+                            }
+                            else
+                            {
+                                set = 2;
+                            }
+
+                            var test = av[run].getCards().Contains(cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()]) ? cards[c.getSuit()][c.getRank() == 1 ? 12 : c.getRank() - 2] : cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()];
+                            if (!hands[0].getKnownCards().Contains(test) && hands.Any(h => h.getKnownCards().Contains(test)))
+                            {
+                                hands[0].playCard(c, av[set]);
+                                var st3 = "";
+                                foreach (var c2 in av[set].getCards())
+                                {
+                                    if (c2.equals(c)) continue;
+                                    st3 += " " + c2.asString();
+                                }
+                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                            }
+                            else
+                            {
+                                hands[0].playCard(c, av[run]);
+                                var st3 = "";
+                                foreach (var c2 in av[run].getCards())
+                                {
+                                    if (c2.equals(c)) continue;
+                                    st3 += " " + c2.asString();
+                                }
+                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                            }
+                        }
+                        else
+                        {
+                            var set = 0;
+                            var run = 0;
+
+                            if (av[0].getCards()[0].getRank() == av[0].getCards()[1].getRank())
+                            {
+                                run = 1;
+                            }
+                            else
+                            {
+                                set = 1;
+                            }
+
+                            var test = av[run].getCards().Contains(cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()]) ? cards[c.getSuit()][c.getRank() == 1 ? 12 : c.getRank() - 2] : cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()];
+                            if (!hands[0].getKnownCards().Contains(test) && hands.Any(h => h.getKnownCards().Contains(test)))
+                            {
+                                hands[0].playCard(c, av[set]);
+                                var st3 = "";
+                                foreach (var c2 in av[set].getCards())
+                                {
+                                    if (c2.equals(c)) continue;
+                                    st3 += " " + c2.asString();
+                                }
+                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                            }
+                            else
+                            {
+                                hands[0].playCard(c, av[run]);
+                                var st3 = "";
+                                foreach (var c2 in av[run].getCards())
+                                {
+                                    if (c2.equals(c)) continue;
+                                    st3 += " " + c2.asString();
+                                }
+                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                            }
+                        }
+                        break;
+                }
+                updateMeldsText();
+            }
+        }
+
+        //Discard:
+
+        var vals = new List<(Card c, float v)>();
+        Debug.Log("Card values (Higher=hold it, Lower=Discard):");
+        foreach (var c in hands[0].getKnownCards())
+        {
+            vals.Add((c, c.getValueInHand(hands, meldsOnTable, discardPile)));
+            Debug.Log(c.asString() + ": " + vals.First(k => k.c.equals(c)).v);
+        }
+
+        var minValue = (from t in vals select t.v).Min();
+        var toDiscard = vals.First(k => k.v == minValue).c;
+
+        instructionsText.text += "\n•Discard " + toDiscard.asString() + " (valued at " + minValue + ")" + "\nPress 'End Turn' once all actions completed.";
+
+        hands[0].discard(toDiscard);
+        discardPile.Add(toDiscard);
+        toDiscard.markAsSeen();
+
+        endTurnButton.gameObject.SetActive(true);
+        //Waiting for "end turn" to be pressed
+    }
+
+    void endTurnPress()
+    {
+        endTurnButton.gameObject.SetActive(false);
+        if (hands[0].getSize() == 0)
+        {
+            instructionsText.text = "Game ended, you have " + hands[0].getTablePoints() + " points.";
+            return;
+        }
+        activePlayer++;
+        if (activePlayer >= playerCount)
+        {
+            activePlayer = 0;
+        }
+        instructionsText.gameObject.SetActive(false);
+        updateDiscardPile();
+        turn();
     }
 
     void setupCards()
@@ -201,6 +576,10 @@ public class main : MonoBehaviour
 
         cardSelectSubmitButton.onClick.RemoveAllListeners();
         cardSelectSubmitButton.onClick.AddListener(cardSelectSubmitPress);
+
+        endTurnButton.gameObject.SetActive(false);
+        endTurnButton.onClick.RemoveAllListeners();
+        endTurnButton.onClick.AddListener(endTurnPress);
     }
 
     void pressPlayerSelect(int p)
@@ -258,15 +637,13 @@ public class main : MonoBehaviour
                 //TODO: Remove this-------------------------------------------------------------------------
                 if (activePlayer==0)
                 {
-                    var vals = new float[hands[0].getKnownCards().Count];
+                    var vals = new List<(Card c, float v)>();
                     Debug.Log("Card values (Higher=hold it, Lower=Discard):");
-                    for (var i = 0; i < hands[0].getKnownCards().Count; i++)
+                    foreach (var c in hands[0].getKnownCards())
                     {
-                        vals[i] = hands[0].getKnownCards()[i].getValueInHand(hands, meldsOnTable, discardPile);
-                        Debug.Log(hands[0].getKnownCards()[i].asString() + ": " + vals[i]);
-                        
+                        vals.Add((c, c.getValueInHand(hands, meldsOnTable, discardPile)));
+                        Debug.Log(c.asString() + ": " + vals.First(k => k.c.equals(c)).v);
                     }
-                    hands[0].debugUsefulCards(meldsOnTable);
                 }
                 //TODO:--------------------------------------------------------------------------------------
                 
@@ -304,6 +681,11 @@ public class main : MonoBehaviour
         if (drawingFromDiscard)
         {
             expectedCardsText.text = "Enter card picked up from (1)";
+            discardPileText.gameObject.SetActive(true);
+        }
+        if (drawFromDeck)
+        {
+            expectedCardsText.text = "Enter card picked up from deck (1)";
         }
         
         selectedCards.Clear();
@@ -424,14 +806,6 @@ public class main : MonoBehaviour
             var p = new Meld(t, cards);
             hands[activePlayer].playMeld(p);
             meldsOnTable.Add(p);
-            Debug.Log("There are " + meldsOnTable.Count + " melds on the table.");
-            for (var i = 0; i < meldsOnTable.Count; i++)
-            {
-                Debug.Log(i);
-                Debug.Log(".asText: " + meldsOnTable[i].asText());
-                Debug.Log("Meld type: " + meldsOnTable[i].getMeldType());
-                Debug.Log("First card in list: " + meldsOnTable[i].getCards()[0].asString());
-            }
             playingNewMeld = false;
             updateMeldsText();
         } else if (playingOnExisting)
@@ -470,6 +844,7 @@ public class main : MonoBehaviour
             var c = selectedCards[0];
             hands[activePlayer].drawCard(c);
             drawFromDeck = false;
+            if (!disableAuto) finishTurn();
         }
         updateHandTexts();
     }
@@ -791,14 +1166,14 @@ public class Card
 
         var h = allHands.First(j => j.getKnownCards().Contains(this));
 
-        if (tableMelds.Any(m => m.canPlay(this))) {
-            if (allHands[1].getKnownCards().Count == 1)
+        if (tableMelds.Any(m => m.canPlay(this))) {//TODO: Somehow make this better
+            if (allHands[1].getSize() == 1)
             {
                 potentialValue += h.getValue();
             }
             else
             {
-                potentialValue += 1.5f * raw;
+                potentialValue += 2f * raw;
             }
         }
 
@@ -1290,8 +1665,28 @@ public class Meld
             playbleCards.Clear();
             if (M == 13)
             {
-                if (m == 1)
+                if (m == 1)//TODO: FIX
                 {
+                    var full = true;
+                    for(int i = 1; i<13; i++)
+                    {
+                        if (!cards.Any(c => c.getRank() == i))
+                        {
+                            full = false;
+                        }
+                    }
+                    if (full) return;
+
+                    var f = new List<int> { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }.First(j => !cards.Any(k => k.getRank() == j));
+                    var l = new List<int> { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }.Last(j => !cards.Any(k => k.getRank() == j));
+                    if (f == l)
+                    {
+                        playbleCards.Add(list[cards[0].getSuit()][f - 1]);
+                    } else
+                    {
+                        playbleCards.Add(list[cards[0].getSuit()][f - 1]);
+                        playbleCards.Add(list[cards[0].getSuit()][l - 1]);
+                    }
                     return;
                 }
 
