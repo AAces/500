@@ -241,7 +241,7 @@ public class main : MonoBehaviour
             instructionsText.text += "\n•Play meld" + s;
         }
 
-        Another:
+        Another: //TODO: A23 & 333, but it played 333, probably because it saw a king or a 4 in the pile and removed the A23 from consideration
         var possiblePlays = new List<List<Card>>();
         foreach(var (c1, c2, c3) in hands[0].getKnownCards().SelectMany(c1 => hands[0].getKnownCards().SelectMany(c2 => hands[0].getKnownCards().Select(c3 => (c1, c2, c3)))))
         {
@@ -492,7 +492,7 @@ public class main : MonoBehaviour
             vals.Add((c, c.getValueInHand(hands, meldsOnTable, discardPile, cardsInDeck)));
             Debug.Log(c.asString() + ": " + vals.First(k => k.c.equals(c)).v);
         }
-
+        Debug.Log("There are " + cardsInDeck + " cards remaining in the deck.");
         var minValue = (from t in vals select t.v).Min();
         var toDiscard = vals.First(k => k.v == minValue).c;
 
@@ -503,6 +503,7 @@ public class main : MonoBehaviour
         toDiscard.markAsSeen();
 
         endTurnButton.gameObject.SetActive(true);
+        updateDiscardPile();
         //Waiting for "end turn" to be pressed
     }
 
@@ -520,7 +521,6 @@ public class main : MonoBehaviour
             activePlayer = 0;
         }
         instructionsText.gameObject.SetActive(false);
-        updateDiscardPile();
         turn();
     }
 
@@ -806,13 +806,18 @@ public class main : MonoBehaviour
             }
             updateDiscardPile();
         }
-        else if (discarding)
+        else if (discarding) //TODO: If someone goes out, stop the game
         {
             var c = selectedCards[0];
             hands[activePlayer].discard(c);
             discardPile.Add(c);
             c.markAsSeen();
             discarding = false;
+            /*if (hands[activePlayer].getSize()==0)
+            {
+                updateDiscardPile();
+                return;
+            }*/
             activePlayer++;
             if (activePlayer >= playerCount)
             {
@@ -1273,7 +1278,10 @@ public class Card
 
         if (tableMelds.Any(m => m.canPlay(this))) potentialLoss += raw;
 
-        if (allHands.Where(p => !p.getKnownCards().Contains(this)).Any(p => p.getSize() < 2)) potentialValue += 2f*(1f-cardsInDeck/52f)*raw;
+        if (allHands.Where(p => !p.getKnownCards().Contains(this)).Any(p => p.getSize() < 2)) { 
+            potentialValue += 2f * (1f - cardsInDeck / 52f) * raw;
+        }
+
 
         foreach (var hand in allHands)
         {
