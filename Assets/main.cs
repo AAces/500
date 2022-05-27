@@ -14,7 +14,7 @@ public class main : MonoBehaviour
 
     private Button[][] cardButtons;
 
-    public Text selectedCardsText, expectedCardsText, discardPileText, tableMeldsText, instructionsText;
+    public Text selectedCardsText, expectedCardsText, discardPileText, tableMeldsText, instructionsText, cardCountText;
 
     public Text[] handTexts;
 
@@ -62,6 +62,7 @@ public class main : MonoBehaviour
         tableMeldsText.text = "";
         discardPileText.text = "";
         instructionsText.text = "";
+        cardCountText.text = "";
         expectedCardsText.gameObject.SetActive(false);
         selectedCardsText.gameObject.SetActive(false);
         discardPileText.gameObject.SetActive(false);
@@ -492,7 +493,6 @@ public class main : MonoBehaviour
             vals.Add((c, c.getValueInHand(hands, meldsOnTable, discardPile, cardsInDeck)));
             Debug.Log(c.asString() + ": " + vals.First(k => k.c.equals(c)).v);
         }
-        Debug.Log("There are " + cardsInDeck + " cards remaining in the deck.");
         var minValue = (from t in vals select t.v).Min();
         var toDiscard = vals.First(k => k.v == minValue).c;
 
@@ -646,6 +646,8 @@ public class main : MonoBehaviour
                 else
                 {
                     hands[activePlayer].blindDraw();
+                    cardsInDeck--;
+                    updateCardCount();
                 }
                 updateHandTexts();
                 break;
@@ -722,6 +724,7 @@ public class main : MonoBehaviour
         {
             expectedCardsText.text = "Enter card picked up from deck (1)";
             cardsInDeck--;
+            updateCardCount();
         }
         
         selectedCards.Clear();
@@ -759,7 +762,7 @@ public class main : MonoBehaviour
         tableMeldsText.text = "";
         foreach (var m in meldsOnTable)
         {
-            tableMeldsText.text += m.asText();
+            tableMeldsText.text += "•" + m.asText();
             tableMeldsText.text += "\n";
         }
     }
@@ -774,6 +777,11 @@ public class main : MonoBehaviour
         }
 
         return temp;
+    }
+
+    void updateCardCount()
+    {
+        cardCountText.text = cardsInDeck.ToString();
     }
 
     void cardSelectSubmitPress()
@@ -903,6 +911,7 @@ public class main : MonoBehaviour
         hands[activePlayer].playCard(storedCard, storedMelds[0].getMeldType() == 0 ? storedMelds[0] : storedMelds[1]);
         setButton.gameObject.SetActive(false);
         runButton.gameObject.SetActive(false);
+        updateMeldsText();
     }
 
     void runButtonPress()
@@ -910,6 +919,7 @@ public class main : MonoBehaviour
         hands[activePlayer].playCard(storedCard, storedMelds[0].getMeldType() == 0 ? storedMelds[1] : storedMelds[0]);
         setButton.gameObject.SetActive(false);
         runButton.gameObject.SetActive(false);
+        updateMeldsText();
     }
 
     void cardSelectRemovePress()
@@ -1020,6 +1030,7 @@ public class main : MonoBehaviour
             v.gameObject.SetActive(false);
         }
         cardsInDeck -= 7*(n+1)+1;
+        updateCardCount();
         promptFirstCardEntry();
     }
 
@@ -1713,7 +1724,7 @@ public class Meld
             playbleCards.Clear();
             if (M == 13)
             {
-                if (m == 1)//TODO: FIX
+                if (m == 1)
                 {
                     var full = true;
                     for(int i = 1; i<13; i++)
@@ -1764,7 +1775,6 @@ public class Meld
             }
             else
             {
-                
                 if (cards.Contains(list[cards[0].getSuit()][M-2]))
                 {
                     playbleCards.Add(list[cards[0].getSuit()][m-2]);
