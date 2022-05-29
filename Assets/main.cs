@@ -991,7 +991,9 @@ public class main : MonoBehaviour
         {
             v.gameObject.SetActive(false);
         }
-        discardPileText.gameObject.SetActive(false);
+
+        if(!drawingFromDiscard) discardPileText.gameObject.SetActive(false);
+        
         tableMeldsText.gameObject.SetActive(false);
     }
 
