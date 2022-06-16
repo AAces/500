@@ -8,7 +8,7 @@ using UnityEngine.UI;
 public class main : MonoBehaviour
 {
 
-    public Button cardSelectSubmitButton, cardSelectRemoveButton, setButton, runButton, endTurnButton;
+    public Button cardSelectSubmitButton, cardSelectRemoveButton, setButton, runButton, endTurnButton, exitButton;
 
     public Button[] playerButtons, actionButtons, numberButtons, spades, hearts, diamonds, clubs; //0=spades, 1=hearts, 2=diamonds, 3=clubs
 
@@ -612,9 +612,17 @@ public class main : MonoBehaviour
         cardSelectSubmitButton.onClick.RemoveAllListeners();
         cardSelectSubmitButton.onClick.AddListener(cardSelectSubmitPress);
 
+        exitButton.onClick.RemoveAllListeners();
+        exitButton.onClick.AddListener(exit);
+
         endTurnButton.gameObject.SetActive(false);
         endTurnButton.onClick.RemoveAllListeners();
         endTurnButton.onClick.AddListener(endTurnPress);
+    }
+
+    void exit()
+    {
+        Application.Quit();
     }
 
     void pressPlayerSelect(int p)
