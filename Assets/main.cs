@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using TMPro.SpriteAssetUtilities;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -14,7 +13,7 @@ public class main : MonoBehaviour
 
     private Button[][] cardButtons;
 
-    public Text selectedCardsText, expectedCardsText, discardPileText, tableMeldsText, instructionsText, cardCountText;
+    public Text selectedCardsText, expectedCardsText, discardPileText, tableMeldsText, instructionsText, cardCountText, buttonLabels;
 
     public Text[] handTexts;
 
@@ -30,7 +29,7 @@ public class main : MonoBehaviour
 
     private int activePlayer, playerCount, expectedCards, cardsInDeck;
 
-    public bool disableAuto;
+    public bool disableAuto, mobileFormatting;
 
     private bool drawFromDeck, turnOver, playingOnExisting, playingNewMeld, drawingFromDiscard, firstCardEntry, discarding, min, selectingCards;
 
@@ -68,6 +67,7 @@ public class main : MonoBehaviour
         discardPileText.gameObject.SetActive(false);
         tableMeldsText.gameObject.SetActive(false);
         instructionsText.gameObject.SetActive(false);
+        buttonLabels.gameObject.SetActive(false);
         setupCards();
         setupButtons();
         foreach (var v in handTexts)
@@ -164,9 +164,22 @@ public class main : MonoBehaviour
             //-------------------------------------------------------------------
             if (meldsThatCanBeMadeFromPile.Count == 0)
             {//can't pick up from pile
-                instructionsText.text = "•Pick up from draw pile and enter drawn card";
-                drawFromDeck = true;
-                promptCardEntry(1, false);
+                var justDiscarded = discardPile.Last();
+                if (meldsOnTable.Any(m => m.canPlay(justDiscarded))) //If the previous player missed a play
+                {
+                    instructionsText.text = "•Pick up from discard pile, starting at " + justDiscarded.asString();
+                    hands[0].drawCard(justDiscarded);
+                    discardPile.Remove(justDiscarded);
+                    updateDiscardPile();
+
+                    playCardOnMeld(justDiscarded, meldsOnTable.Where(m => m.canPlay(justDiscarded)).ToList());
+                }
+                else
+                {
+                    instructionsText.text = "•Pick up from draw pile and enter drawn card";
+                    drawFromDeck = true;
+                    promptCardEntry(1, false);
+                }
             } else
             {//could pick up from pile
 
@@ -336,148 +349,7 @@ public class main : MonoBehaviour
 
             if (2*c.getRawValue()>value || forcePlay)
             {
-                switch (av.Count)
-                {
-                    case 1:
-                        hands[0].playCard(c, av[0]);
-                        var st2 = "";
-                        foreach (var c2 in av[0].getCards())
-                        {
-                            if (c2.equals(c)) continue;
-                            st2 += " " + c2.asString();
-                        }
-                        instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st2;
-                        break;
-                    case 2:
-                        if (av[0].getMeldType() == av[1].getMeldType())
-                        {
-                            hands[0].playCard(c, av[0]);
-                            var st3 = "";
-                            foreach (var c2 in av[0].getCards())
-                            {
-                                if (c2.equals(c)) continue;
-                                st3 += " " + c2.asString();
-                            }
-                            instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
-                        }
-                        else
-                        {
-                            var set = 0;
-                            var run = 0;
-
-                            if(av[0].getCards()[0].getRank() == av[0].getCards()[1].getRank())
-                            {
-                                run = 1;
-                            } else
-                            {
-                                set = 1;
-                            }
-
-                            var test = av[run].getCards().Contains(cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()]) ? cards[c.getSuit()][c.getRank() == 1 ? 12 : c.getRank() - 2]:cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()];
-                            if (!hands[0].getKnownCards().Contains(test) && hands.Any(h => h.getKnownCards().Contains(test)))
-                            {
-                                hands[0].playCard(c, av[set]);
-                                var st3 = "";
-                                foreach (var c2 in av[set].getCards())
-                                {
-                                    if (c2.equals(c)) continue;
-                                    st3 += " " + c2.asString();
-                                }
-                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
-                            }
-                            else
-                            {
-                                hands[0].playCard(c, av[run]);
-                                var st3 = "";
-                                foreach (var c2 in av[run].getCards())
-                                {
-                                    if (c2.equals(c)) continue;
-                                    st3 += " " + c2.asString();
-                                }
-                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
-                            }
-                            
-                        }
-                        break;
-                    case 3:
-                        if (av[0].getMeldType() == av[1].getMeldType())
-                        {
-                            var set = 0;
-                            var run = 0;
-
-                            if (av[0].getCards()[0].getRank() == av[0].getCards()[1].getRank())
-                            {
-                                run = 2;
-                            }
-                            else
-                            {
-                                set = 2;
-                            }
-
-                            var test = av[run].getCards().Contains(cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()]) ? cards[c.getSuit()][c.getRank() == 1 ? 12 : c.getRank() - 2] : cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()];
-                            if (!hands[0].getKnownCards().Contains(test) && hands.Any(h => h.getKnownCards().Contains(test)))
-                            {
-                                hands[0].playCard(c, av[set]);
-                                var st3 = "";
-                                foreach (var c2 in av[set].getCards())
-                                {
-                                    if (c2.equals(c)) continue;
-                                    st3 += " " + c2.asString();
-                                }
-                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
-                            }
-                            else
-                            {
-                                hands[0].playCard(c, av[run]);
-                                var st3 = "";
-                                foreach (var c2 in av[run].getCards())
-                                {
-                                    if (c2.equals(c)) continue;
-                                    st3 += " " + c2.asString();
-                                }
-                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
-                            }
-                        }
-                        else
-                        {
-                            var set = 0;
-                            var run = 0;
-
-                            if (av[0].getCards()[0].getRank() == av[0].getCards()[1].getRank())
-                            {
-                                run = 1;
-                            }
-                            else
-                            {
-                                set = 1;
-                            }
-
-                            var test = av[run].getCards().Contains(cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()]) ? cards[c.getSuit()][c.getRank() == 1 ? 12 : c.getRank() - 2] : cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()];
-                            if (!hands[0].getKnownCards().Contains(test) && hands.Any(h => h.getKnownCards().Contains(test)))
-                            {
-                                hands[0].playCard(c, av[set]);
-                                var st3 = "";
-                                foreach (var c2 in av[set].getCards())
-                                {
-                                    if (c2.equals(c)) continue;
-                                    st3 += " " + c2.asString();
-                                }
-                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
-                            }
-                            else
-                            {
-                                hands[0].playCard(c, av[run]);
-                                var st3 = "";
-                                foreach (var c2 in av[run].getCards())
-                                {
-                                    if (c2.equals(c)) continue;
-                                    st3 += " " + c2.asString();
-                                }
-                                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
-                            }
-                        }
-                        break;
-                }
+                playCardOnMeld(c, av);
                 played = true;
                 updateMeldsText();
             }
@@ -504,7 +376,155 @@ public class main : MonoBehaviour
 
         endTurnButton.gameObject.SetActive(true);
         updateDiscardPile();
+
         //Waiting for "end turn" to be pressed
+    }
+
+    void playCardOnMeld(Card c, List<Meld> av)
+    {
+        switch (av.Count)
+        {
+            case 1:
+                hands[0].playCard(c, av[0]);
+                var st2 = "";
+                foreach (var c2 in av[0].getCards())
+                {
+                    if (c2.equals(c)) continue;
+                    st2 += " " + c2.asString();
+                }
+                instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st2;
+                break;
+            case 2:
+                if (av[0].getMeldType() == av[1].getMeldType())
+                {
+                    hands[0].playCard(c, av[0]);
+                    var st3 = "";
+                    foreach (var c2 in av[0].getCards())
+                    {
+                        if (c2.equals(c)) continue;
+                        st3 += " " + c2.asString();
+                    }
+                    instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                }
+                else
+                {
+                    var set = 0;
+                    var run = 0;
+
+                    if (av[0].getCards()[0].getRank() == av[0].getCards()[1].getRank())
+                    {
+                        run = 1;
+                    }
+                    else
+                    {
+                        set = 1;
+                    }
+
+                    var test = av[run].getCards().Contains(cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()]) ? cards[c.getSuit()][c.getRank() == 1 ? 12 : c.getRank() - 2] : cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()];
+                    if (!hands[0].getKnownCards().Contains(test) && hands.Any(h => h.getKnownCards().Contains(test)))
+                    {
+                        hands[0].playCard(c, av[set]);
+                        var st3 = "";
+                        foreach (var c2 in av[set].getCards())
+                        {
+                            if (c2.equals(c)) continue;
+                            st3 += " " + c2.asString();
+                        }
+                        instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                    }
+                    else
+                    {
+                        hands[0].playCard(c, av[run]);
+                        var st3 = "";
+                        foreach (var c2 in av[run].getCards())
+                        {
+                            if (c2.equals(c)) continue;
+                            st3 += " " + c2.asString();
+                        }
+                        instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                    }
+
+                }
+                break;
+            case 3:
+                if (av[0].getMeldType() == av[1].getMeldType())
+                {
+                    var set = 0;
+                    var run = 0;
+
+                    if (av[0].getCards()[0].getRank() == av[0].getCards()[1].getRank())
+                    {
+                        run = 2;
+                    }
+                    else
+                    {
+                        set = 2;
+                    }
+
+                    var test = av[run].getCards().Contains(cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()]) ? cards[c.getSuit()][c.getRank() == 1 ? 12 : c.getRank() - 2] : cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()];
+                    if (!hands[0].getKnownCards().Contains(test) && hands.Any(h => h.getKnownCards().Contains(test)))
+                    {
+                        hands[0].playCard(c, av[set]);
+                        var st3 = "";
+                        foreach (var c2 in av[set].getCards())
+                        {
+                            if (c2.equals(c)) continue;
+                            st3 += " " + c2.asString();
+                        }
+                        instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                    }
+                    else
+                    {
+                        hands[0].playCard(c, av[run]);
+                        var st3 = "";
+                        foreach (var c2 in av[run].getCards())
+                        {
+                            if (c2.equals(c)) continue;
+                            st3 += " " + c2.asString();
+                        }
+                        instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                    }
+                }
+                else
+                {
+                    var set = 0;
+                    var run = 0;
+
+                    if (av[0].getCards()[0].getRank() == av[0].getCards()[1].getRank())
+                    {
+                        run = 1;
+                    }
+                    else
+                    {
+                        set = 1;
+                    }
+
+                    var test = av[run].getCards().Contains(cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()]) ? cards[c.getSuit()][c.getRank() == 1 ? 12 : c.getRank() - 2] : cards[c.getSuit()][c.getRank() == 13 ? 0 : c.getRank()];
+                    if (!hands[0].getKnownCards().Contains(test) && hands.Any(h => h.getKnownCards().Contains(test)))
+                    {
+                        hands[0].playCard(c, av[set]);
+                        var st3 = "";
+                        foreach (var c2 in av[set].getCards())
+                        {
+                            if (c2.equals(c)) continue;
+                            st3 += " " + c2.asString();
+                        }
+                        instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                    }
+                    else
+                    {
+                        hands[0].playCard(c, av[run]);
+                        var st3 = "";
+                        foreach (var c2 in av[run].getCards())
+                        {
+                            if (c2.equals(c)) continue;
+                            st3 += " " + c2.asString();
+                        }
+                        instructionsText.text += "\n•Play card " + c.asString() + " on meld" + st3;
+                    }
+                }
+                break;
+        }
     }
 
     void endTurnPress()
@@ -532,7 +552,7 @@ public class main : MonoBehaviour
             cards[s] = new Card[13];
             for (var r = 0; r < 13; r++)
             {
-                cards[s][r] = new Card(s, r+1);
+                cards[s][r] = new Card(s, r+1, mobileFormatting);
             }
         }
 
@@ -829,17 +849,21 @@ public class main : MonoBehaviour
             discardPile.Add(c);
             c.markAsSeen();
             discarding = false;
-            /*if (hands[activePlayer].getSize()==0)
+            updateDiscardPile();
+            if (hands[activePlayer].getSize()==0)
             {
-                updateDiscardPile();
+                updateHandTexts();
+                foreach(var v in actionButtons)
+                {
+                    v.gameObject.SetActive(false);
+                }
                 return;
-            }*/
+            }
             activePlayer++;
             if (activePlayer >= playerCount)
             {
                 activePlayer = 0;
             }
-            updateDiscardPile();
             turn();
         } else if (drawingFromDiscard)
         {
@@ -865,6 +889,15 @@ public class main : MonoBehaviour
             meldsOnTable.Add(p);
             playingNewMeld = false;
             updateMeldsText();
+            if (hands[activePlayer].getSize() == 0)
+            {
+                updateHandTexts();
+                foreach (var v in actionButtons)
+                {
+                    v.gameObject.SetActive(false);
+                }
+                return;
+            }
         } else if (playingOnExisting)
         {
             var c = selectedCards[0];
@@ -896,6 +929,15 @@ public class main : MonoBehaviour
             }
             updateMeldsText();
             playingOnExisting = false;
+            if (hands[activePlayer].getSize() == 0)
+            {
+                updateHandTexts();
+                foreach (var v in actionButtons)
+                {
+                    v.gameObject.SetActive(false);
+                }
+                return;
+            }
         } else if (drawFromDeck)
         {
             var c = selectedCards[0];
@@ -945,6 +987,7 @@ public class main : MonoBehaviour
         cardSelectSubmitButton.gameObject.SetActive(true);
         selectedCardsText.gameObject.SetActive(true);
         expectedCardsText.gameObject.SetActive(true);
+        buttonLabels.gameObject.SetActive(mobileFormatting);
         foreach (var v in cardButtons)
         {
             foreach (var c in v)
@@ -1011,6 +1054,7 @@ public class main : MonoBehaviour
         cardSelectSubmitButton.gameObject.SetActive(false);
         selectedCardsText.gameObject.SetActive(false);
         expectedCardsText.gameObject.SetActive(false);
+        buttonLabels.gameObject.SetActive(false);
         foreach (var v in cardButtons)
         {
             foreach (var c in v)
@@ -1127,14 +1171,15 @@ public class Card
 {
     private int suit, rank;
 
-    private bool seen;
+    private bool seen, mobileFormatting;
 
     private Card[][] list;
 
-    public Card(int suit, int rank)
+    public Card(int suit, int rank, bool mobileFormatting)
     {
         this.suit = suit; //0=spades ♠, 1=hearts ♥, 2=diamonds ♦, 3=clubs ♣
         this.rank = rank;
+        this.mobileFormatting = mobileFormatting;
         this.seen = false;
     }
 
@@ -1174,16 +1219,16 @@ public class Card
         switch (suit)
         {
             case 0:
-                s = "♠";
+                s = mobileFormatting ? "S" : "♠";
                 break;
             case 1:
-                s = "♥";
+                s = mobileFormatting ? "H" : "♥";
                 break;
             case 2:
-                s = "♦";
+                s = mobileFormatting ? "D" : "♦";
                 break;
             case 3:
-                s = "♣";
+                s = mobileFormatting ? "C" : "♣";
                 break;
         }
 

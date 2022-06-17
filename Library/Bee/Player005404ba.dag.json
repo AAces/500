@@ -1600,7 +1600,7 @@
     {
       "Annotation": "WriteText Library/Bee/artifacts/WinPlayerBuildProgram/Data/app.info",
       "ActionType": "WriteTextFile",
-      "WriteTextFilePayload": "DefaultCompany\n500",
+      "WriteTextFilePayload": "aaces\n500",
       "Inputs": [],
       "Outputs": [
         "Library/Bee/artifacts/WinPlayerBuildProgram/Data/app.info"
