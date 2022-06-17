@@ -170,9 +170,12 @@ public class main : MonoBehaviour
                     instructionsText.text = "•Pick up from discard pile, starting at " + justDiscarded.asString();
                     hands[0].drawCard(justDiscarded);
                     discardPile.Remove(justDiscarded);
-                    updateDiscardPile();
-
+                    
                     playCardOnMeld(justDiscarded, meldsOnTable.Where(m => m.canPlay(justDiscarded)).ToList());
+
+                    updateMeldsText();
+                    updateDiscardPile();
+                    finishTurn();
                 }
                 else
                 {
